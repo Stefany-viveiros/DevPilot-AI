@@ -59,7 +59,11 @@ router = APIRouter(dependencies=[Depends(enforce_auth)])
 def register_account(payload: RegisterRequest, db: Session = Depends(get_db)):
     if not AUTH_REQUIRED:
         raise HTTPException(status_code=503, detail="Ative DEVPILOT_AUTH_REQUIRED para habilitar contas.")
-    try:\n        _secret()\n    except RuntimeError as exc:\n        raise HTTPException(status_code=503, detail=str(exc)) from exc\n    email = payload.email.strip().lower()\n    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+    try:
+        _secret()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    email = payload.email.strip().lower()\n    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(status_code=422, detail="Informe um e-mail válido.")
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(status_code=409, detail="Este e-mail já possui uma conta.")
@@ -77,7 +81,11 @@ def register_account(payload: RegisterRequest, db: Session = Depends(get_db)):
 def login_account(payload: LoginRequest, db: Session = Depends(get_db)):
     if not AUTH_REQUIRED:
         raise HTTPException(status_code=503, detail="Ative DEVPILOT_AUTH_REQUIRED para habilitar contas.")
-    try:\n        _secret()\n    except RuntimeError as exc:\n        raise HTTPException(status_code=503, detail=str(exc)) from exc\n    email = payload.email.strip().lower()\n    user = db.scalar(select(User).where(User.email == email))
+    try:
+        _secret()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    email = payload.email.strip().lower()\n    user = db.scalar(select(User).where(User.email == email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
     try:
