@@ -83,7 +83,7 @@ def test_sandbox_rejects_symlinked_project_root(tmp_path):
 
 
 def test_sandbox_reports_not_applicable_when_no_supported_checks_exist(tmp_path):
-    report = b'RESULTADO_JSON={"status":"not_applicable","checks":[{"name":"pytest","status":"skipped"},{"name":"javascript_syntax","status":"skipped"}],"javascript_scan_incomplete":false}'
+    report = b'RESULTADO_JSON={"status":"not_applicable","checks":[{"name":"pytest","status":"skipped"},{"name":"python_syntax","status":"skipped"},{"name":"javascript_syntax","status":"skipped"}],"javascript_scan_incomplete":false}'
     with patch("app.services.sandbox.shutil.which", return_value="/usr/bin/docker"), patch(
         "app.services.sandbox.subprocess.Popen", return_value=FakeProcess(report)
     ):
