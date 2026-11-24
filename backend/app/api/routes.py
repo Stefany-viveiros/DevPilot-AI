@@ -1,13 +1,16 @@
 import json
+import re
 import shutil
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.config import MAX_ARCHIVE_BYTES, WORKSPACE_DIR
+from app.core.config import AUTH_REQUIRED, MAX_ARCHIVE_BYTES, WORKSPACE_DIR
 from app.db.session import get_db
 from app.models.event import ProjectEvent
 from app.models.project import Project
@@ -15,7 +18,10 @@ from app.models.agent_task import AgentTask
 from app.models.agent_approval import AgentApproval
 from app.models.project_memory import ProjectMemory
 from app.models.agent_run import AgentRun
+from app.models.user import User
 from app.schemas.agent import TaskCreate, TaskRead, AgentPlan, MemoryWrite, MemoryRead
+from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
+from app.services.auth import hash_password, verify_password, issue_token, read_token
 from app.services.agent import AgentProviderError, create_plan, apply_plan
 from app.services.rescue import rescue_project
 from app.services.sandbox import SandboxUnavailable, run_python_tests
@@ -25,7 +31,63 @@ from app.schemas.project import (
 from app.services.project_analysis import analyze_project
 from app.services.project_import import ArchiveValidationError, extract_project_archive
 
-router = APIRouter()
+_current_user_id: ContextVar[int | None] = ContextVar("devpilot_user_id", default=None)
+_bearer = HTTPBearer(auto_error=False)
+
+def enforce_auth(credentials: HTTPAuthorizationCredentials | None = Depends(_bearer), db: Session = Depends(get_db)):
+    if not AUTH_REQUIRED:
+        return
+    if credentials is None or credentials.scheme.lower() != "bearer":
+        raise HTTPException(status_code=401, detail="Autenticação necessária.", headers={"WWW-Authenticate": "Bearer"})
+    try:
+        payload = read_token(credentials.credentials)
+        user = db.get(User, int(payload["sub"]))
+    except (ValueError, RuntimeError, KeyError, TypeError):
+        raise HTTPException(status_code=401, detail="Token inválido ou expirado.", headers={"WWW-Authenticate": "Bearer"})
+    if user is None or not user.is_active:
+        raise HTTPException(status_code=401, detail="Conta inativa ou inexistente.")
+    token = _current_user_id.set(user.id)
+    try:
+        yield
+    finally:
+        _current_user_id.reset(token)
+
+auth_router = APIRouter(prefix="/auth", tags=["Autenticação"])
+router = APIRouter(dependencies=[Depends(enforce_auth)])
+
+@auth_router.post("/register", response_model=TokenResponse, status_code=201)
+def register_account(payload: RegisterRequest, db: Session = Depends(get_db)):
+    if not AUTH_REQUIRED:
+        raise HTTPException(status_code=503, detail="Ative DEVPILOT_AUTH_REQUIRED para habilitar contas.")
+    email = payload.email.strip().lower()
+    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+        raise HTTPException(status_code=422, detail="Informe um e-mail válido.")
+    if db.scalar(select(User).where(User.email == email)):
+        raise HTTPException(status_code=409, detail="Este e-mail já possui uma conta.")
+    user = User(email=email, password_hash=hash_password(payload.password), plan="free")
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    try:
+        token = issue_token(user.id, user.email)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"access_token": token, "plan": user.plan}
+
+@auth_router.post("/login", response_model=TokenResponse)
+def login_account(payload: LoginRequest, db: Session = Depends(get_db)):
+    if not AUTH_REQUIRED:
+        raise HTTPException(status_code=503, detail="Ative DEVPILOT_AUTH_REQUIRED para habilitar contas.")
+    email = payload.email.strip().lower()
+    user = db.scalar(select(User).where(User.email == email))
+    if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
+    try:
+        token = issue_token(user.id, user.email)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"access_token": token, "plan": user.plan}
+
 
 def record_event(db: Session, project_id: int, event_type: str, summary: str, details: dict | None = None) -> None:
     db.add(ProjectEvent(
@@ -37,7 +99,8 @@ def record_event(db: Session, project_id: int, event_type: str, summary: str, de
 
 def get_existing_project(project_id: int, db: Session) -> Project:
     project = db.get(Project, project_id)
-    if project is None:
+    user_id = _current_user_id.get()
+    if project is None or (user_id is not None and project.user_id != user_id):
         raise HTTPException(status_code=404, detail="Projeto não encontrado.")
     return project
 
@@ -55,11 +118,23 @@ def health_check() -> dict[str, str]:
 
 @router.get("/projects", response_model=list[ProjectRead], tags=["Projetos"])
 def list_projects(db: Session = Depends(get_db)) -> list[Project]:
-    return list(db.scalars(select(Project).order_by(Project.created_at.desc())).all())
+    query = select(Project).order_by(Project.created_at.desc())
+    if _current_user_id.get() is not None:
+        query = query.where(Project.user_id == _current_user_id.get())
+    return list(db.scalars(query).all())
 
 @router.post("/projects", response_model=ProjectRead, status_code=status.HTTP_201_CREATED, tags=["Projetos"])
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Project:
-    project = Project(name=payload.name.strip(), description=payload.description, root_path=payload.root_path)
+    user_id = _current_user_id.get()
+    if user_id is not None:
+        user = db.get(User, user_id)
+        limit = 3 if user.plan == "free" else 25
+        if db.scalar(select(Project.id).where(Project.user_id == user_id).limit(limit).count()) if False else False:
+            pass
+        existing = len(db.scalars(select(Project.id).where(Project.user_id == user_id)).all())
+        if existing >= limit:
+            raise HTTPException(status_code=429, detail=f"Limite do plano {user.plan}: {limit} projetos.")
+    project = Project(user_id=user_id, name=payload.name.strip(), description=payload.description, root_path=payload.root_path)
     db.add(project)
     db.flush()
     record_event(db, project.id, "project_created", "Projeto cadastrado.")
@@ -91,6 +166,7 @@ async def import_project(
         name=name.strip(),
         description=description,
         root_path=result.storage_path,
+        user_id=_current_user_id.get(),
         status="imported",
     )
     try:
@@ -176,6 +252,20 @@ def create_agent_task(project_id: int, payload: TaskCreate, db: Session = Depend
         plan = create_plan(root, payload.instruction.strip(), memory_context)
     except AgentProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
+    user_id = _current_user_id.get()
+    if user_id is not None:
+        user = db.get(User, user_id)
+        now = datetime.now(timezone.utc)
+        reset = user.usage_reset_at
+        if reset.tzinfo is None:
+            reset = reset.replace(tzinfo=timezone.utc)
+        if (now - reset).days >= 1:
+            user.tasks_used_today = 0
+            user.usage_reset_at = now
+        limit = 10 if user.plan == "free" else 250
+        if user.tasks_used_today >= limit:
+            raise HTTPException(status_code=429, detail=f"Limite diário do plano {user.plan}: {limit} tarefas.")
+        user.tasks_used_today += 1
     task = AgentTask(project_id=project.id, instruction=payload.instruction.strip(),
                      status="awaiting_approval", plan_json=plan.model_dump_json())
     db.add(task)
@@ -220,6 +310,7 @@ def reject_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
     if task.status != "awaiting_approval":
         raise HTTPException(status_code=409, detail="Esta tarefa não aguarda decisão.")
+    get_existing_project(task.project_id, db)
     task.status = "rejected"
     db.add(AgentApproval(task_id=task.id, decision="rejected"))
     record_event(db, task.project_id, "agent_plan_rejected", "Plano do agente rejeitado.", {"task_id": task.id})
