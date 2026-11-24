@@ -2,7 +2,7 @@
 
 Agente de desenvolvimento de software para analisar, planejar, modificar e validar projetos reais com autonomia controlada.
 
-> **Status:** Fase 3 — planejamento com IA local e alterações mediante aprovação.
+> **Status:** Base local ampliada: agente, memória, diagnóstico, validação em contêiner e autenticação opcional.
 
 ## Funcionalidades disponíveis
 
@@ -18,6 +18,10 @@ Agente de desenvolvimento de software para analisar, planejar, modificar e valid
 - Testes automatizados com pytest e integração contínua no GitHub Actions.
 - Planejamento de tarefas via Ollama local, revisão do plano e aprovação/rejeição.
 - Escrita de arquivos restrita à raiz do projeto e bloqueio de caminhos sensíveis.
+- Memória técnica persistente, incluindo perfil estrutural e notas manuais.
+- Modo Resgate com diagnóstico estático e recomendações priorizadas.
+- Execução de testes Python via Docker com rede desativada, filesystem do projeto somente leitura e limites de recursos.
+- Base de autenticação com hash de senha, tokens assinados, isolamento de projetos por conta e cotas iniciais.
 
 **Limite importante:** a análise atual é estática e estrutural. Ela lista arquivos e identifica indícios por nomes/extensões; não instala dependências, não executa scripts e não garante que todas as tecnologias foram detectadas.
 
@@ -61,7 +65,11 @@ Acesse:
 - Saúde da API: http://127.0.0.1:8000/api/v1/health
 - Documentação interativa: http://127.0.0.1:8000/docs
 
-O agente usa Ollama local em `http://127.0.0.1:11434` e o modelo `qwen2.5-coder:3b` por padrão. Instale o Ollama e execute `ollama pull qwen2.5-coder:3b`. Configure `DEVPILOT_OLLAMA_URL` e `DEVPILOT_OLLAMA_MODEL` para personalizar. Sem Ollama, a função de planejamento retorna indisponibilidade; não há API paga obrigatória.\n\nO banco SQLite é criado em `backend/data/devpilot.db`. Os projetos importados ficam em `workspace/`. Ambos são dados locais e não devem ser versionados.
+Para validação isolada, construa a imagem de testes na raiz do repositório com: docker build -t devpilot-sandbox:py311 sandbox/. A validação executa pytest dentro do contêiner sem rede, com projeto montado como somente leitura e limites de recursos. A imagem inclui pytest, mas não instala dependências específicas de cada projeto.
+
+O agente usa Ollama local em `http://127.0.0.1:11434` e o modelo `qwen2.5-coder:3b` por padrão. Instale o Ollama e execute `ollama pull qwen2.5-coder:3b`. Configure `DEVPILOT_OLLAMA_URL` e `DEVPILOT_OLLAMA_MODEL` para personalizar. Sem Ollama, a função de planejamento retorna indisponibilidade; não há API paga obrigatória.
+
+O banco SQLite é criado em `backend/data/devpilot.db`. Os projetos importados ficam em `workspace/`. Ambos são dados locais e não devem ser versionados.
 
 ## Importar um projeto
 
@@ -84,7 +92,16 @@ Limites atuais: ZIP de até 20 MB, até 2.000 itens, 100 MB descompactados e 10 
 - `PATCH /api/v1/projects/{id}`
 - `POST /api/v1/projects/{id}/analyze`
 - `GET /api/v1/projects/{id}/analysis`
-- `GET /api/v1/projects/{id}/events`\n- `POST /api/v1/projects/{id}/tasks` — gera plano com IA local\n- `GET /api/v1/projects/{id}/tasks`\n- `POST /api/v1/tasks/{task_id}/approve` — aplica alterações após aprovação\n- `POST /api/v1/tasks/{task_id}/reject`
+- `GET /api/v1/projects/{id}/events`
+- `GET /api/v1/projects/{id}/memory` / `PUT /api/v1/projects/{id}/memory`
+- `POST /api/v1/projects/{id}/rescue`
+- `POST /api/v1/projects/{id}/validate`
+- `GET /api/v1/projects/{id}/runs`
+- `POST /api/v1/auth/register` / `POST /api/v1/auth/login` (modo autenticado)
+- `POST /api/v1/projects/{id}/tasks` — gera plano com IA local
+- `GET /api/v1/projects/{id}/tasks`
+- `POST /api/v1/tasks/{task_id}/approve` — aplica alterações após aprovação
+- `POST /api/v1/tasks/{task_id}/reject`
 
 ## Testes
 
@@ -101,8 +118,11 @@ pytest -q
 - Diretórios comuns de dependências, ambientes virtuais e metadados de controle de versão são ignorados.
 - Arquivos com nomes e extensões sensíveis comuns são ignorados, mas isso não substitui uma ferramenta dedicada de detecção de segredos.
 - A análise percorre apenas a pasta de workspace associada ao projeto.
-- A aplicação ainda não tem autenticação. Não a exponha à internet ou a uma rede não confiável.
-- O agente não executa comandos nem instala dependências. A aprovação autoriza escrita dos arquivos propostos, não garante correção do código. Faça backup e revise as alterações. Execução em sandbox, autenticação e autorização continuam planejadas. Mantenha o servidor local e não o exponha à internet.
+- O modo local mantém autenticação desativada por padrão. Para habilitar contas, configure DEVPILOT_AUTH_REQUIRED=true e DEVPILOT_AUTH_SECRET com pelo menos 32 caracteres aleatórios. As rotas da API passam a exigir Authorization: Bearer token; os projetos ficam isolados por conta. O plano gratuito tem limites iniciais de 3 projetos e 10 tarefas de IA por dia.
+- A validação em Docker executa somente pytest com rede desativada; não instala dependências do projeto. A segurança depende de Docker e host atualizados. Não exponha o daemon Docker.
+- O Modo Resgate é estático e sua pontuação é indicativa, não uma avaliação de qualidade comprovada.
+- A autenticação é uma base inicial: ainda faltam verificação de e-mail, recuperação de senha, rate limiting distribuído, sessões revogáveis, cobrança, portal de assinatura, monitoramento e hardening antes de produção. Não exponha a aplicação à internet ainda.
+- A aprovação autoriza escrita dos arquivos propostos, não garante correção do código. Faça backup e revise as alterações.
 
 ## Estrutura
 
@@ -134,6 +154,6 @@ workspace/        # Projetos importados localmente (não versionar)
 4. Execução isolada, testes e correções controladas.
 5. Memória técnica persistente.
 6. Modo Resgate.
-7. Preparação SaaS.
+7. Base SaaS inicial (autenticação e cotas implementadas; cobrança e operação de produção pendentes).
 
 Consulte [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) para as decisões de arquitetura.
