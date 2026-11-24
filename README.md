@@ -14,7 +14,7 @@ Agente de desenvolvimento de software para analisar, planejar, modificar e valid
 - Limites de tamanho do arquivo, quantidade de itens e volume descompactado.
 - Detecção inicial de linguagens, tecnologias, manifestos e pontos de entrada.
 - Histórico de eventos e evidências de execução por projeto.
-- Painel de tarefas com estados, aprovação/rejeição de planos pendentes e restauração de aplicações a partir do checkpoint.
+- Painel de tarefas com estados, comparação de diferenças antes da aprovação, aprovação/rejeição de planos pendentes e restauração de aplicações a partir do checkpoint.
 - Dashboard web responsivo.
 - Testes automatizados com pytest e integração contínua no GitHub Actions.
 - Planejamento de tarefas via Ollama local, revisão do plano e aprovação/rejeição.
@@ -107,6 +107,7 @@ Limites atuais: ZIP de até 20 MB, até 2.000 itens, 100 MB descompactados e 10 
 - `POST /api/v1/auth/register` / `POST /api/v1/auth/login` / `GET /api/v1/auth/me` (modo autenticado; consulta plano e consumo de cotas)
 - `POST /api/v1/projects/{id}/tasks` — gera plano com IA local
 - `GET /api/v1/projects/{id}/tasks`
+- `GET /api/v1/tasks/{task_id}/diff` — compara os arquivos atuais com a proposta antes da aprovação
 - `POST /api/v1/tasks/{task_id}/approve` — aplica alterações após aprovação
 - `POST /api/v1/tasks/{task_id}/restore` — restaura o checkpoint da aplicação e marca a tarefa como restaurada
 - `POST /api/v1/tasks/{task_id}/reject`
