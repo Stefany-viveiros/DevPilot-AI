@@ -1,4 +1,5 @@
 import json
+import os
 import urllib.error
 import urllib.request
 from pathlib import Path, PurePosixPath
@@ -73,6 +74,9 @@ MEMÓRIA TÉCNICA DO PROJETO:\n{memory_context[:12000]}\nCONTEXTO:{_context(root
         raise AgentProviderError("A IA retornou um plano inválido. Reformule a solicitação.") from exc
     if len(plan.proposed_changes) > 20:
         raise AgentProviderError("O plano excede o limite de 20 arquivos.")
+    proposed_paths = [os.path.normcase(change.get("path", "").replace("\\", "/")) for change in plan.proposed_changes]
+    if len(proposed_paths) != len(set(proposed_paths)):
+        raise AgentProviderError("A IA propôs alterações duplicadas para o mesmo caminho.")
     for change in plan.proposed_changes:
         if not {"path", "content"}.issubset(change) or len(change["content"].encode()) > 200000:
             raise AgentProviderError("Uma alteração não atende ao formato ou limite de tamanho.")
@@ -86,6 +90,9 @@ def apply_plan(root: Path, plan: AgentPlan) -> list[str]:
     if not plan.proposed_changes:
         raise ValueError("O plano não contém alterações aplicáveis.")
     targets = [(validate_path(root, item["path"]), item) for item in plan.proposed_changes]
+    target_keys = [os.path.normcase(str(path.resolve(strict=False))) for path, _ in targets]
+    if len(target_keys) != len(set(target_keys)):
+        raise ValueError("O plano contém caminhos de arquivo duplicados.")
     backups, written = {}, []
     try:
         for target, item in targets:
