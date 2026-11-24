@@ -46,8 +46,8 @@ def test_real_docker_sandbox_checks_javascript_syntax_without_executing_it(tmp_p
     tmp_path.chmod(0o755)
     source = tmp_path / "app.js"
     source.write_text(
-        "const fs = require('fs');\\n"
-        "fs.writeFileSync('/workspace/nao-deve-existir.txt', 'executado');\\n",
+        "const fs = require('fs');\n"
+        "fs.writeFileSync('/workspace/nao-deve-existir.txt', 'executado');\n",
         encoding="utf-8",
     )
     valid = run_python_tests(tmp_path)
@@ -57,7 +57,7 @@ def test_real_docker_sandbox_checks_javascript_syntax_without_executing_it(tmp_p
     assert checks["javascript_syntax"]["files_checked"] == 1
     assert not (tmp_path / "nao-deve-existir.txt").exists()
 
-    source.write_text("const = ;\\n", encoding="utf-8")
+    source.write_text("const = ;\n", encoding="utf-8")
     invalid = run_python_tests(tmp_path)
     assert invalid["status"] == "failed"
     assert "SyntaxError" in invalid["output"]
