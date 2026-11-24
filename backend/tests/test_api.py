@@ -118,3 +118,22 @@ def test_analysis_requires_an_imported_project(client):
 def test_analysis_of_unknown_project_returns_404(client):
     response = client.post("/api/v1/projects/404/analyze")
     assert response.status_code == 404
+
+
+def test_project_memory_and_rescue_endpoints(client):
+    archive = make_zip({"src/main.py": "print('ok')\n", "requirements.txt": ""})
+    imported = client.post("/api/v1/projects/import", data={"name":"Memória e resgate"},
+                           files={"archive":("projeto.zip",archive,"application/zip")})
+    project_id = imported.json()["id"]
+    client.post(f"/api/v1/projects/{project_id}/analyze")
+    memory = client.get(f"/api/v1/projects/{project_id}/memory")
+    assert memory.status_code == 200
+    assert any(item["memory_key"] == "project_profile" for item in memory.json())
+    saved = client.put(f"/api/v1/projects/{project_id}/memory",
+                       json={"memory_key":"architecture","content":"Backend em Python e FastAPI."})
+    assert saved.status_code == 200 and saved.json()["source"] == "user"
+    report = client.post(f"/api/v1/projects/{project_id}/rescue")
+    assert report.status_code == 200
+    assert "findings" in report.json()
+    runs = client.get(f"/api/v1/projects/{project_id}/runs")
+    assert any(run["run_type"] == "rescue" for run in runs.json())
