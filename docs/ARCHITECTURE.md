@@ -57,7 +57,7 @@ A aprovação permite apenas escrita de arquivos dentro da raiz do projeto, com 
 
 ## Fase 4 — validação em sandbox
 
-A execução de testes Python é delegada ao Docker por uma lista fixa de argumentos: sem shell, sem rede, filesystem raiz somente leitura, projeto montado como somente leitura, remoção de capabilities, no-new-privileges, limites de memória/CPU/processos e timeout de 120 segundos. A imagem devpilot-sandbox:py311 contém pytest. Não há instalação de dependências específicas do projeto nem comandos arbitrários. Docker é requisito para esta operação.
+A execução de testes Python é delegada ao Docker por uma lista fixa de argumentos: sem shell, sem rede, filesystem raiz somente leitura, projeto montado como somente leitura, remoção de capabilities, no-new-privileges, limites de memória/CPU/processos e timeout de 120 segundos. A imagem devpilot-sandbox:py311 contém pytest. Não há instalação de dependências específicas do projeto nem comandos arbitrários. Docker é requisito para esta operação. Quando os testes falham, a rota de reparo envia a saída limitada ao planejador local e gera uma tarefa pendente de aprovação. A aprovação aplica os arquivos; a nova validação é uma ação separada e registrada, para evitar ciclos automáticos sem supervisão.
 
 ## Fase 5 — memória técnica
 
