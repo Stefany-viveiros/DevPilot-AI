@@ -1,5 +1,6 @@
 import json
 import os
+import stat
 import tempfile
 import urllib.error
 import urllib.request
@@ -91,6 +92,8 @@ def _atomic_write(target: Path, content: bytes) -> None:
     descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.devpilot-", dir=target.parent)
     temporary = Path(temporary_name)
     try:
+        mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o644
+        os.chmod(temporary, mode)
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(content)
             stream.flush()
