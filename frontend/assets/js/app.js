@@ -143,6 +143,7 @@ function renderProjects(projects) {
           try {
             await request(`/tasks/${action.dataset.taskId}/approve`, {method:"POST"});
             feedback.textContent = "Alterações aplicadas e checkpoint criado.";
+            button.disabled = false;
             button.click();
           } catch (error) { feedback.textContent = error.message; action.disabled = false; }
         }));
@@ -152,6 +153,7 @@ function renderProjects(projects) {
           try {
             await request(`/tasks/${action.dataset.taskId}/reject`, {method:"POST"});
             feedback.textContent = "Plano rejeitado.";
+            button.disabled = false;
             button.click();
           } catch (error) { feedback.textContent = error.message; action.disabled = false; }
         }));
@@ -161,6 +163,7 @@ function renderProjects(projects) {
           try {
             await request(`/tasks/${action.dataset.taskId}/restore`, {method:"POST"});
             feedback.textContent = "Checkpoint restaurado. Confira os arquivos do projeto.";
+            button.disabled = false;
             button.click();
           } catch (error) { feedback.textContent = error.message; action.disabled = false; }
         }));
