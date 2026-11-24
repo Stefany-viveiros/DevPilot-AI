@@ -13,7 +13,7 @@ O DevPilot é um monólito modular. Essa escolha mantém a execução local simp
 - **Importação:** ZIP extraído em diretório próprio dentro de `workspace/`, sem executar arquivos.
 - **Análise:** inventário estrutural de arquivos, manifestos, linguagens prováveis e pontos de entrada.
 - **Planejamento:** Ollama local, contexto limitado, plano estruturado e aprovação humana antes de gravar arquivos.
-- **Validação:** pytest em contêiner Docker com rede desativada e limites de recursos.
+- **Validação:** testes Python com pytest e verificação de sintaxe JavaScript com `node --check`, em contêiner Docker sem rede e com limites de recursos.
 - **Memória e histórico:** memória técnica por projeto, eventos e registros de execução.
 - **Modo Resgate:** diagnóstico estático e recomendações priorizadas.
 - **CI:** GitHub Actions testa Python 3.11 e 3.13, valida a sintaxe do JavaScript e do inicializador Bash, constrói a imagem Docker e executa testes unitários e de integração.
@@ -53,7 +53,7 @@ A aplicação bloqueia traversal, caminhos absolutos, symlinks, pastas protegida
 
 A execução de testes Python é delegada ao Docker por uma lista fixa de argumentos: sem shell, sem rede, filesystem raiz somente leitura, projeto montado como somente leitura, remoção de capabilities, `no-new-privileges`, limites de memória/CPU/processos e timeout de 120 segundos. A saída retida em memória é limitada a 12 KB. Em timeout, o executor tenta encerrar o contêiner identificado pelo arquivo CID.
 
-A imagem `devpilot-sandbox:py311` contém pytest. Não há instalação de dependências específicas do projeto nem comandos arbitrários. Docker é requisito para esta operação. A CI constrói a imagem e executa um teste de integração real que confirma a execução de pytest e a montagem somente leitura. Quando os testes falham, a rota de reparo envia a saída limitada ao planejador local e gera uma tarefa pendente de aprovação. Timeout ou resultado inconclusivo não gera proposta de reparo. Após aprovação, a nova validação é uma ação separada e registrada.
+A imagem `devpilot-sandbox:py311` contém pytest e Node.js. O executor encontra testes Python e executa pytest quando eles existem; também verifica até 100 arquivos `.js`, `.mjs` e `.cjs` com `node --check`, limitando cada arquivo a 1 MB e o total a 20 MB. A checagem JavaScript analisa sintaxe, não executa o arquivo. Não há instalação de dependências específicas, execução de scripts npm, compilação TypeScript/TSX nem comandos arbitrários. Docker é requisito para esta operação. A CI constrói a imagem e executa um teste de integração real que confirma a execução de pytest e a montagem somente leitura. Quando os testes falham, a rota de reparo envia a saída limitada ao planejador local e gera uma tarefa pendente de aprovação. Timeout ou resultado inconclusivo não gera proposta de reparo. Após aprovação, a nova validação é uma ação separada e registrada.
 
 ## Memória, histórico e Modo Resgate
 
