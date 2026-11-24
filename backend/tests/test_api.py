@@ -310,3 +310,57 @@ def test_timeout_does_not_trigger_automatic_repair_proposal(client, monkeypatch)
     assert response.json()["validation"]["status"] == "timeout"
     assert response.json()["task"] is None
     assert "não produziu uma falha" in response.json()["planning_error"]
+
+
+def test_repair_plan_consumes_ai_quota(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    monkeypatch.setenv("DEVPILOT_AUTH_SECRET", "r" * 48)
+    registered = client.post("/api/v1/auth/register", json={
+        "email": "reparo@example.com", "password": "senha-super-segura-321"
+    })
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    archive = make_zip({"main.py": "value = 1"})
+    imported = client.post("/api/v1/projects/import", headers=headers, data={"name": "Cota de reparo"},
+                           files={"archive": ("reparo.zip", archive, "application/zip")})
+    project_id = imported.json()["id"]
+    monkeypatch.setattr(routes, "run_python_tests", lambda root: {
+        "status": "failed", "exit_code": 1, "output": "AssertionError",
+        "sandbox": "sandbox de teste"
+    })
+    monkeypatch.setattr(routes, "create_plan", lambda *args: AgentPlan(
+        summary="Analisar falha", steps=[], proposed_changes=[], risks=[]
+    ))
+    response = client.post(f"/api/v1/projects/{project_id}/repair", headers=headers)
+    assert response.status_code == 200
+    usage = client.get("/api/v1/auth/me", headers=headers).json()
+    assert usage["tasks_used_today"] == 1
+
+
+def test_repair_respects_daily_ai_quota(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    monkeypatch.setenv("DEVPILOT_AUTH_SECRET", "q" * 48)
+    registered = client.post("/api/v1/auth/register", json={
+        "email": "limite@example.com", "password": "senha-super-segura-654"
+    })
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    archive = make_zip({"main.py": "value = 1"})
+    imported = client.post("/api/v1/projects/import", headers=headers, data={"name": "Limite IA"},
+                           files={"archive": ("limite.zip", archive, "application/zip")})
+    project_id = imported.json()["id"]
+    monkeypatch.setattr(routes, "create_plan", lambda *args: AgentPlan(
+        summary="Plano sem alterações", steps=[], proposed_changes=[], risks=[]
+    ))
+    for index in range(10):
+        task = client.post(f"/api/v1/projects/{project_id}/tasks", headers=headers,
+                           json={"instruction": f"Analise a tarefa de teste número {index}"})
+        assert task.status_code == 201
+    monkeypatch.setattr(routes, "run_python_tests", lambda root: {
+        "status": "failed", "exit_code": 1, "output": "AssertionError",
+        "sandbox": "sandbox de teste"
+    })
+    blocked = client.post(f"/api/v1/projects/{project_id}/repair", headers=headers)
+    assert blocked.status_code == 429
