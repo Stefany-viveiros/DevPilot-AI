@@ -459,6 +459,11 @@ def validate_and_propose_repair(project_id: int, db: Session = Depends(get_db)):
         record_event(db, project.id, "repair_validation_passed", "Testes passaram; nenhuma correção foi proposta.")
         db.commit()
         return {"validation": validation, "task": None, "planning_error": None}
+    if validation["status"] != "failed":
+        reason = "A validação não produziu uma falha de teste conclusiva; nenhuma correção automática foi sugerida."
+        record_event(db, project.id, "repair_not_proposed", reason, {"status": validation["status"]})
+        db.commit()
+        return {"validation": validation, "task": None, "planning_error": reason}
     memories = db.scalars(select(ProjectMemory).where(ProjectMemory.project_id == project.id)).all()
     memory_context = "\n".join(f"{item.memory_key}: {item.content}" for item in memories)
     instruction = (
