@@ -18,14 +18,14 @@
         <a class="nav-link active" href="#inicio"><span>◫</span> Visão geral</a>
         <a class="nav-link" href="#projetos"><span>▧</span> Projetos</a>
         <a class="nav-link disabled" href="#em-breve" aria-disabled="true"><span>⌘</span> Agente <small>em breve</small></a>
-        <a class="nav-link disabled" href="#em-breve" aria-disabled="true"><span>◷</span> Histórico <small>em breve</small></a>
+        <a class="nav-link" href="#projetos"><span>◷</span> Histórico</a>
       </nav>
-      <div class="sidebar-bottom"><div class="agent-status"><span class="status-dot"></span><span><b>Fundação ativa</b><small>Versão 0.1.0</small></span></div><p>Autonomia com controle.<br>Resultados com evidências.</p></div>
+      <div class="sidebar-bottom"><div class="agent-status"><span class="status-dot"></span><span><b>Fundação ativa</b><small>Versão 0.2.0</small></span></div><p>Autonomia com controle.<br>Resultados com evidências.</p></div>
     </aside>
     <main class="main-content" id="inicio">
-      <header class="topbar"><div><span class="eyebrow">CENTRAL DE DESENVOLVIMENTO</span><h1>Visão geral</h1></div><span class="version-pill">Prévia · 0.1.0</span></header>
+      <header class="topbar"><div><span class="eyebrow">CENTRAL DE DESENVOLVIMENTO</span><h1>Visão geral</h1></div><span class="version-pill">Prévia · 0.2.0</span></header>
       <section class="welcome-panel">
-        <div class="welcome-copy"><span class="eyebrow light">SEU PARCEIRO DE DESENVOLVIMENTO</span><h2>Vamos transformar ideias<br>em software que funciona.</h2><p>Organize seus projetos. Em breve, o DevPilot poderá analisá-los, planejar tarefas e validar alterações com segurança.</p><a class="primary-button" href="#projetos">Explorar projetos <span>→</span></a></div>
+        <div class="welcome-copy"><span class="eyebrow light">SEU PARCEIRO DE DESENVOLVIMENTO</span><h2>Vamos transformar ideias<br>em software que funciona.</h2><p>Importe seus projetos, conheça sua estrutura e identifique as tecnologias utilizadas. A execução de código continua desativada nesta etapa.</p><a class="primary-button" href="#projetos">Explorar projetos <span>→</span></a></div>
         <div class="orb-art" aria-hidden="true"><div class="orb-core">D</div><i></i><i></i><i></i></div>
       </section>
       <section class="metrics-grid" aria-label="Indicadores">
@@ -34,13 +34,20 @@
         <article class="metric-card"><span class="metric-icon blue">⌘</span><span class="metric-label">Agente autônomo</span><strong class="metric-soon">Próxima fase</strong><small>Planejamento e execução controlada</small></article>
       </section>
       <section class="projects-section" id="projetos">
-        <div class="section-heading"><div><span class="eyebrow">SEU ESPAÇO</span><h2>Seus projetos</h2><p>Cadastre projetos para organizar seu trabalho.</p></div><button class="primary-button" id="open-project-form">+ Novo projeto</button></div>
+        <div class="section-heading"><div><span class="eyebrow">SEU ESPAÇO</span><h2>Seus projetos</h2><p>Cadastre um projeto ou importe seus arquivos em ZIP.</p></div><div class="section-actions"><button class="secondary-button" id="open-project-form">+ Cadastro manual</button><button class="primary-button" id="open-import-form">Importar ZIP</button></div></div>
         <form class="project-form hidden" id="project-form">
-          <div class="form-heading"><div><h3>Cadastrar projeto</h3><p>Por enquanto, apenas os metadados serão armazenados.</p></div><button type="button" class="icon-button" id="close-project-form" aria-label="Fechar formulário">×</button></div>
+          <div class="form-heading"><div><h3>Cadastrar projeto</h3><p>Cria um registro sem importar ou acessar arquivos locais.</p></div><button type="button" class="icon-button" id="close-project-form" aria-label="Fechar formulário">×</button></div>
           <label>Nome do projeto<input name="name" maxlength="120" required placeholder="Ex.: Meu aplicativo"></label>
           <label>Descrição <span class="optional">(opcional)</span><textarea name="description" maxlength="2000" rows="3" placeholder="O que este projeto faz?"></textarea></label>
-          <label>Caminho local <span class="optional">(opcional, apenas referência)</span><input name="root_path" maxlength="500" placeholder="Ex.: C:\Projetos\meu-app"></label>
           <div class="form-actions"><p id="form-message" role="status"></p><button class="primary-button" type="submit">Salvar projeto</button></div>
+        </form>
+        <form class="project-form hidden" id="import-form">
+          <div class="form-heading"><div><h3>Importar projeto compactado</h3><p>ZIP de até 20 MB. Arquivos não serão executados.</p></div><button type="button" class="icon-button" id="close-import-form" aria-label="Fechar formulário">×</button></div>
+          <label>Nome do projeto<input name="name" maxlength="120" required placeholder="Ex.: Meu aplicativo"></label>
+          <label>Descrição <span class="optional">(opcional)</span><textarea name="description" maxlength="2000" rows="2" placeholder="O que este projeto faz?"></textarea></label>
+          <label>Arquivo ZIP<input name="archive" type="file" accept=".zip,application/zip" required></label>
+          <p class="security-note">Diretórios de dependências e arquivos com nomes comuns de segredos serão ignorados. Revise o conteúdo antes de enviar; não inclua credenciais.</p>
+          <div class="form-actions"><p id="import-message" role="status"></p><button class="primary-button" type="submit">Importar projeto</button></div>
         </form>
         <div id="project-list" class="project-list" aria-live="polite"><div class="loading-state">Carregando projetos…</div></div>
       </section>

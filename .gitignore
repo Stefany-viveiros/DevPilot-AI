@@ -1,25 +1,27 @@
-# Python
+# Ambientes Python
+.venv/
+venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .mypy_cache/
-.ruff_cache/
-.venv/
-venv/
 
-# Local configuration and secrets
+# Configurações e segredos
 .env
 .env.*
 !.env.example
+*.pem
+*.key
 
-# Local databases and runtime data
+# Dados locais
+backend/data/
+workspace/
 *.db
 *.sqlite
 *.sqlite3
-backend/data/
 
-# Editors and operating systems
-.vscode/
-.idea/
+# Sistema operacional e IDE
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/

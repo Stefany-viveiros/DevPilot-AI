@@ -32,5 +32,28 @@ class ProjectRead(BaseModel):
     description: str | None
     root_path: str | None
     status: str
+    last_analyzed_at: datetime | None
     created_at: datetime
     updated_at: datetime
+
+class ProjectAnalysisRead(BaseModel):
+    project_id: int
+    project_name: str
+    analyzed_at: datetime
+    detected_technologies: list[str]
+    language_file_counts: dict[str, int]
+    manifest_hints: list[str]
+    entrypoints: list[str]
+    files: list[str]
+    total_files: int
+    files_listed: int
+    files_omitted_from_list: int
+
+class ProjectEventRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    project_id: int
+    event_type: str
+    summary: str
+    details_json: str | None
+    created_at: datetime

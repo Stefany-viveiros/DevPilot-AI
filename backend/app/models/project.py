@@ -13,5 +13,7 @@ class Project(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     root_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     status: Mapped[str] = mapped_column(String(30), nullable=False, default="registered")
+    analysis_data: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_analyzed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)

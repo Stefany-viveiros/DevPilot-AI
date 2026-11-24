@@ -12,9 +12,15 @@ sys.path.insert(0, str(BACKEND_DIR))
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import create_app
+import app.api.routes as project_routes
+import app.services.project_import as project_import
 
 @pytest.fixture()
-def client():
+def client(tmp_path, monkeypatch):
+    workspace = tmp_path / "workspace"
+    monkeypatch.setattr(project_routes, "WORKSPACE_DIR", workspace)
+    monkeypatch.setattr(project_import, "WORKSPACE_DIR", workspace)
+
     test_engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},

@@ -1,11 +1,45 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+import json
+import shutil
+from datetime import datetime, timezone
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+
+from app.core.config import MAX_ARCHIVE_BYTES, WORKSPACE_DIR
 from app.db.session import get_db
+from app.models.event import ProjectEvent
 from app.models.project import Project
-from app.schemas.project import ProjectCreate, ProjectRead, ProjectUpdate
+from app.schemas.project import (
+    ProjectAnalysisRead, ProjectCreate, ProjectEventRead, ProjectRead, ProjectUpdate,
+)
+from app.services.project_analysis import analyze_project
+from app.services.project_import import ArchiveValidationError, extract_project_archive
 
 router = APIRouter()
+
+def record_event(db: Session, project_id: int, event_type: str, summary: str, details: dict | None = None) -> None:
+    db.add(ProjectEvent(
+        project_id=project_id,
+        event_type=event_type,
+        summary=summary,
+        details_json=json.dumps(details, ensure_ascii=False) if details is not None else None,
+    ))
+
+def get_existing_project(project_id: int, db: Session) -> Project:
+    project = db.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    return project
+
+def get_project_directory(project: Project) -> Path:
+    if not project.root_path:
+        raise HTTPException(status_code=409, detail="Este projeto ainda não possui arquivos importados.")
+    candidate = (WORKSPACE_DIR / project.root_path).resolve()
+    if not candidate.is_relative_to(WORKSPACE_DIR) or not candidate.is_dir():
+        raise HTTPException(status_code=404, detail="A pasta autorizada do projeto não foi encontrada.")
+    return candidate
 
 @router.get("/health", tags=["Sistema"])
 def health_check() -> dict[str, str]:
@@ -19,27 +53,106 @@ def list_projects(db: Session = Depends(get_db)) -> list[Project]:
 def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Project:
     project = Project(name=payload.name.strip(), description=payload.description, root_path=payload.root_path)
     db.add(project)
+    db.flush()
+    record_event(db, project.id, "project_created", "Projeto cadastrado.")
     db.commit()
     db.refresh(project)
     return project
 
+@router.post("/projects/import", response_model=ProjectRead, status_code=status.HTTP_201_CREATED, tags=["Projetos"])
+async def import_project(
+    name: str = Form(min_length=1, max_length=120),
+    description: str | None = Form(default=None, max_length=2000),
+    archive: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> Project:
+    if not name.strip():
+        raise HTTPException(status_code=422, detail="Informe um nome para o projeto.")
+    if not archive.filename or Path(archive.filename).suffix.lower() != ".zip":
+        raise HTTPException(status_code=422, detail="Envie um arquivo com extensão .zip.")
+    if archive.content_type not in {"application/zip", "application/x-zip-compressed", "application/octet-stream"}:
+        raise HTTPException(status_code=415, detail="O tipo de arquivo enviado não é aceito.")
+    archive_bytes = await archive.read(MAX_ARCHIVE_BYTES + 1)
+    await archive.close()
+    try:
+        result = extract_project_archive(archive_bytes)
+    except ArchiveValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    project = Project(
+        name=name.strip(),
+        description=description,
+        root_path=result.storage_path,
+        status="imported",
+    )
+    try:
+        db.add(project)
+        db.flush()
+        record_event(db, project.id, "project_imported", "Arquivos do projeto importados com segurança.", {
+            "files_imported": result.files_imported,
+            "files_skipped": result.files_skipped,
+            "bytes_imported": result.bytes_imported,
+        })
+        db.commit()
+        db.refresh(project)
+        return project
+    except Exception:
+        db.rollback()
+        shutil.rmtree(WORKSPACE_DIR / result.storage_path, ignore_errors=True)
+        raise
+
 @router.get("/projects/{project_id}", response_model=ProjectRead, tags=["Projetos"])
 def get_project(project_id: int, db: Session = Depends(get_db)) -> Project:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
-    return project
+    return get_existing_project(project_id, db)
 
 @router.patch("/projects/{project_id}", response_model=ProjectRead, tags=["Projetos"])
 def update_project(project_id: int, payload: ProjectUpdate, db: Session = Depends(get_db)) -> Project:
-    project = db.get(Project, project_id)
-    if project is None:
-        raise HTTPException(status_code=404, detail="Projeto não encontrado.")
+    project = get_existing_project(project_id, db)
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "name" and value is not None:
             value = value.strip()
         if value is not None or field != "name":
             setattr(project, field, value)
+    record_event(db, project.id, "project_updated", "Dados do projeto atualizados.")
     db.commit()
     db.refresh(project)
     return project
+
+@router.post("/projects/{project_id}/analyze", response_model=ProjectAnalysisRead, tags=["Análise"])
+def analyze_registered_project(project_id: int, db: Session = Depends(get_db)) -> dict:
+    project = get_existing_project(project_id, db)
+    root = get_project_directory(project)
+    try:
+        analysis = analyze_project(root)
+    except OSError as exc:
+        raise HTTPException(status_code=500, detail="Não foi possível ler a estrutura do projeto.") from exc
+    analyzed_at = datetime.now(timezone.utc)
+    project.analysis_data = json.dumps(analysis, ensure_ascii=False)
+    project.last_analyzed_at = analyzed_at
+    project.status = "analyzed"
+    record_event(db, project.id, "project_analyzed", "Estrutura e tecnologias do projeto analisadas.", {
+        "total_files": analysis["total_files"],
+        "detected_technologies": analysis["detected_technologies"],
+    })
+    db.commit()
+    return {"project_id": project.id, "project_name": project.name, "analyzed_at": analyzed_at, **analysis}
+
+@router.get("/projects/{project_id}/analysis", response_model=ProjectAnalysisRead, tags=["Análise"])
+def get_project_analysis(project_id: int, db: Session = Depends(get_db)) -> dict:
+    project = get_existing_project(project_id, db)
+    if not project.analysis_data or not project.last_analyzed_at:
+        raise HTTPException(status_code=404, detail="Este projeto ainda não foi analisado.")
+    return {
+        "project_id": project.id,
+        "project_name": project.name,
+        "analyzed_at": project.last_analyzed_at,
+        **json.loads(project.analysis_data),
+    }
+
+@router.get("/projects/{project_id}/events", response_model=list[ProjectEventRead], tags=["Histórico"])
+def list_project_events(project_id: int, db: Session = Depends(get_db)) -> list[ProjectEvent]:
+    get_existing_project(project_id, db)
+    return list(db.scalars(
+        select(ProjectEvent).where(ProjectEvent.project_id == project_id)
+        .order_by(ProjectEvent.created_at.desc(), ProjectEvent.id.desc())
+    ).all())

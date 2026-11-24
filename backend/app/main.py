@@ -6,8 +6,9 @@ from fastapi.staticfiles import StaticFiles
 from app.api.routes import router
 from app.core.config import APP_NAME, APP_VERSION, DEFAULT_DATABASE_PATH
 from app.db.base import Base
+from app.db.migrations import upgrade_sqlite_schema
 from app.db.session import engine
-from app.models import Project  # noqa: F401
+from app.models import Project, ProjectEvent  # noqa: F401
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
@@ -18,12 +19,13 @@ def create_app(*, initialize_database: bool = True) -> FastAPI:
             if engine.url.drivername == "sqlite":
                 DEFAULT_DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
             Base.metadata.create_all(bind=engine)
+            upgrade_sqlite_schema(engine)
         yield
 
     application = FastAPI(
         title=APP_NAME,
         version=APP_VERSION,
-        description="Fundação do agente de desenvolvimento DevPilot AI.",
+        description="Agente de desenvolvimento DevPilot AI com importação e análise segura de projetos.",
         lifespan=lifespan,
     )
     application.include_router(router, prefix="/api/v1")
