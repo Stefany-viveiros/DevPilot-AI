@@ -176,7 +176,7 @@ def test_sandbox_validation_is_logged(client, monkeypatch):
     result = client.post(f"/api/v1/projects/{project_id}/validate")
     assert result.status_code == 200
     runs = client.get(f"/api/v1/projects/{project_id}/runs").json()
-    assert any(run["run_type"] == "pytest" and run["status"] == "passed" for run in runs)
+    assert any(run["run_type"] == "project_validation" and run["status"] == "passed" for run in runs)
 
 
 def test_project_storage_path_cannot_be_supplied_or_changed(client):
