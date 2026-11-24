@@ -98,6 +98,35 @@ def login_account(payload: LoginRequest, db: Session = Depends(get_db)):
     return {"access_token": token, "plan": user.plan}
 
 
+@auth_router.get("/me", tags=["Autenticação"])
+def account_overview(_: None = Depends(enforce_auth), db: Session = Depends(get_db)) -> dict:
+    if not AUTH_REQUIRED:
+        raise HTTPException(status_code=503, detail="A visão de conta exige autenticação habilitada.")
+    user_id = _current_user_id.get()
+    user = db.get(User, user_id) if user_id is not None else None
+    if user is None:
+        raise HTTPException(status_code=401, detail="Sessão inválida.")
+    now = datetime.now(timezone.utc)
+    reset = user.usage_reset_at
+    if reset.tzinfo is None:
+        reset = reset.replace(tzinfo=timezone.utc)
+    if (now - reset).total_seconds() >= 86400:
+        user.tasks_used_today = 0
+        user.usage_reset_at = now
+        db.commit()
+    free_plan = user.plan == "free"
+    projects_used = len(db.scalars(select(Project.id).where(Project.user_id == user.id)).all())
+    return {
+        "email": user.email,
+        "plan": user.plan,
+        "projects_used": projects_used,
+        "projects_limit": 3 if free_plan else 25,
+        "tasks_used_today": user.tasks_used_today,
+        "tasks_limit": 10 if free_plan else 250,
+        "usage_reset_at": user.usage_reset_at,
+    }
+
+
 def record_event(db: Session, project_id: int, event_type: str, summary: str, details: dict | None = None) -> None:
     db.add(ProjectEvent(
         project_id=project_id,
