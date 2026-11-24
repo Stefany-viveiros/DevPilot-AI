@@ -50,7 +50,7 @@ function renderProjects(projects) {
     <small class="project-meta">${project.root_path ? "Arquivos importados" : "Cadastro manual"} · ${escapeHtml(project.status)}</small></div>
     <div class="project-actions">
       ${project.root_path ? '<button class="small-button analyze-project">Analisar</button>' : ""}
-      <button class="small-button history-project">Histórico</button>${project.root_path ? '<button class="small-button agent-project">Pedir ao agente</button>' : ""}
+      <button class="small-button history-project">Histórico</button>${project.root_path ? '<button class="small-button agent-project">Pedir ao agente</button><button class="small-button rescue-project">Modo Resgate</button><button class="small-button validate-project">Validar</button><button class="small-button memory-project">Memória</button>' : ""}
     </div>
   </article>`).join("");
 
@@ -131,6 +131,49 @@ function renderProjects(projects) {
         } catch (error) { feedback.textContent = error.message; }
         finally { submit.disabled = false; submit.textContent = "Gerar plano"; }
       });
+    });
+  });
+
+
+  projectList.querySelectorAll(".rescue-project").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const card = button.closest(".project-card"); button.disabled = true; button.textContent = "Diagnosticando…";
+      try {
+        const report = await request(`/projects/${card.dataset.projectId}/rescue`, {method:"POST"});
+        const findings = report.findings.map(item => `<li><b>${escapeHtml(item.severity.toUpperCase())} · ${escapeHtml(item.title)}</b><p>${escapeHtml(item.detail)}</p><p>${escapeHtml(item.recommendation)}</p></li>`).join("");
+        showCardMessage(card, `Modo Resgate: pontuação indicativa ${report.score}/100 · ${report.total_findings} achados. ${report.limitations.join(" ")}`);
+        let panel = card.querySelector(".rescue-panel");
+        if (!panel) { panel = document.createElement("div"); panel.className = "rescue-panel"; card.append(panel); }
+        panel.innerHTML = `<h4>Diagnóstico estático</h4><ul>${findings || "<li>Nenhum achado nas verificações atuais.</li>"}</ul>`;
+      } catch(error) { showCardMessage(card,error.message,true); }
+      finally { button.disabled = false; button.textContent = "Modo Resgate"; }
+    });
+  });
+  projectList.querySelectorAll(".validate-project").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const card = button.closest(".project-card"); button.disabled = true; button.textContent = "Testando…";
+      try {
+        const result = await request(`/projects/${card.dataset.projectId}/validate`, {method:"POST"});
+        showCardMessage(card, `Testes: ${result.status} (código ${result.exit_code}). ${result.output || ""}`, result.status !== "passed");
+      } catch(error) { showCardMessage(card,error.message,true); }
+      finally { button.disabled = false; button.textContent = "Validar"; }
+    });
+  });
+  projectList.querySelectorAll(".memory-project").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const card = button.closest(".project-card"); button.disabled = true;
+      try {
+        const entries = await request(`/projects/${card.dataset.projectId}/memory`);
+        let panel = card.querySelector(".memory-panel");
+        if (!panel) { panel = document.createElement("div"); panel.className = "memory-panel"; card.append(panel); }
+        panel.innerHTML = `<h4>Memória técnica persistente</h4><ul>${entries.map(item => `<li><b>${escapeHtml(item.memory_key)}</b> <small>(${escapeHtml(item.source)})</small><pre>${escapeHtml(item.content)}</pre></li>`).join("") || "<li>Ainda sem memórias.</li>"}</ul><label>Chave <input class="memory-key" maxlength="120" placeholder="ex.: arquitetura"></label><label>Informação<textarea class="memory-content" maxlength="8000" rows="3" placeholder="Decisão técnica, padrão ou contexto importante"></textarea></label><button class="small-button save-memory">Salvar memória</button><p class="memory-feedback" role="status"></p>`;
+        panel.querySelector(".save-memory").addEventListener("click", async () => {
+          const key=panel.querySelector(".memory-key").value.trim(), content=panel.querySelector(".memory-content").value.trim(), feedback=panel.querySelector(".memory-feedback");
+          try { await request(`/projects/${card.dataset.projectId}/memory`,{method:"PUT",body:JSON.stringify({memory_key:key,content})}); feedback.textContent="Memória salva."; panel.querySelector(".memory-key").value=""; panel.querySelector(".memory-content").value=""; }
+          catch(error) { feedback.textContent=error.message; }
+        });
+      } catch(error) { showCardMessage(card,error.message,true); }
+      finally { button.disabled = false; }
     });
   });
 
