@@ -75,3 +75,21 @@ def test_apply_rejects_duplicate_file_paths(tmp_path):
     with pytest.raises(ValueError, match="duplicados"):
         apply_plan(tmp_path, plan)
     assert not (tmp_path / "main.py").exists()
+
+
+def test_apply_does_not_follow_precreated_temporary_symlink(tmp_path):
+    outside = tmp_path.parent / "outside-target.txt"
+    outside.write_text("conteudo original", encoding="utf-8")
+    temporary_link = tmp_path / ".main.py.devpilot-attack"
+    try:
+        temporary_link.symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("Symlink indisponível neste ambiente")
+    plan = AgentPlan.model_validate({
+        "summary": "Criar arquivo", "steps": [],
+        "proposed_changes": [{"path": "main.py", "content": "conteudo seguro", "reason": "teste"}],
+        "risks": [],
+    })
+    apply_plan(tmp_path, plan)
+    assert outside.read_text(encoding="utf-8") == "conteudo original"
+    assert (tmp_path / "main.py").read_text(encoding="utf-8") == "conteudo seguro"
