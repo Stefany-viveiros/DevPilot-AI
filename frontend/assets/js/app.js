@@ -81,17 +81,23 @@ function renderProjects(projects) {
       const id = card.dataset.projectId;
       button.disabled = true;
       try {
-        const events = await request(`/projects/${id}/events`);
+        const [events, runs] = await Promise.all([
+          request(`/projects/${id}/events`),
+          request(`/projects/${id}/runs`),
+        ]);
         const history = events.length
           ? events.map((event) => `<li><b>${escapeHtml(event.summary)}</b><small>${escapeHtml(new Date(event.created_at).toLocaleString("pt-BR"))}</small></li>`).join("")
           : "<li>Nenhum evento registrado.</li>";
+        const reports = runs.length
+          ? runs.map((run) => `<li><b>${escapeHtml(run.run_type)} · ${escapeHtml(run.status)}</b><p>${escapeHtml(run.summary)}</p><small>${escapeHtml(new Date(run.created_at).toLocaleString("pt-BR"))}</small>${run.details ? `<details><summary>Ver evidências</summary><pre>${escapeHtml(JSON.stringify(run.details, null, 2))}</pre></details>` : ""}</li>`).join("")
+          : "<li>Nenhuma execução registrada.</li>";
         let panel = card.querySelector(".history-panel");
         if (!panel) {
           panel = document.createElement("div");
           panel.className = "history-panel";
           card.append(panel);
         }
-        panel.innerHTML = `<ul>${history}</ul>`;
+        panel.innerHTML = `<h4>Eventos do projeto</h4><ul>${history}</ul><h4>Execuções e evidências</h4><ul>${reports}</ul>`;
       } catch (error) {
         showCardMessage(card, error.message, true);
       } finally {
