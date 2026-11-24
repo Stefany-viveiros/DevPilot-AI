@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101522">
+  <meta name="description" content="Painel do agente de desenvolvimento DevPilot AI.">
+  <title>DevPilot AI — Painel</title>
+  <link rel="stylesheet" href="/assets/css/styles.css">
+  <script src="/assets/js/app.js" defer></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <a class="brand" href="/" aria-label="DevPilot AI início"><span class="brand-mark">D</span><span>DevPilot <b>AI</b></span></a>
+      <div class="sidebar-label">ESPAÇO DE TRABALHO</div>
+      <nav aria-label="Navegação principal">
+        <a class="nav-link active" href="#inicio"><span>◫</span> Visão geral</a>
+        <a class="nav-link" href="#projetos"><span>▧</span> Projetos</a>
+        <a class="nav-link disabled" href="#em-breve" aria-disabled="true"><span>⌘</span> Agente <small>em breve</small></a>
+        <a class="nav-link disabled" href="#em-breve" aria-disabled="true"><span>◷</span> Histórico <small>em breve</small></a>
+      </nav>
+      <div class="sidebar-bottom"><div class="agent-status"><span class="status-dot"></span><span><b>Fundação ativa</b><small>Versão 0.1.0</small></span></div><p>Autonomia com controle.<br>Resultados com evidências.</p></div>
+    </aside>
+    <main class="main-content" id="inicio">
+      <header class="topbar"><div><span class="eyebrow">CENTRAL DE DESENVOLVIMENTO</span><h1>Visão geral</h1></div><span class="version-pill">Prévia · 0.1.0</span></header>
+      <section class="welcome-panel">
+        <div class="welcome-copy"><span class="eyebrow light">SEU PARCEIRO DE DESENVOLVIMENTO</span><h2>Vamos transformar ideias<br>em software que funciona.</h2><p>Organize seus projetos. Em breve, o DevPilot poderá analisá-los, planejar tarefas e validar alterações com segurança.</p><a class="primary-button" href="#projetos">Explorar projetos <span>→</span></a></div>
+        <div class="orb-art" aria-hidden="true"><div class="orb-core">D</div><i></i><i></i><i></i></div>
+      </section>
+      <section class="metrics-grid" aria-label="Indicadores">
+        <article class="metric-card"><span class="metric-icon purple">▧</span><span class="metric-label">Projetos cadastrados</span><strong id="project-count">—</strong><small>Registrados nesta área</small></article>
+        <article class="metric-card"><span class="metric-icon green">✓</span><span class="metric-label">API</span><strong id="api-status">Verificando</strong><small id="api-detail">Conectando ao serviço</small></article>
+        <article class="metric-card"><span class="metric-icon blue">⌘</span><span class="metric-label">Agente autônomo</span><strong class="metric-soon">Próxima fase</strong><small>Planejamento e execução controlada</small></article>
+      </section>
+      <section class="projects-section" id="projetos">
+        <div class="section-heading"><div><span class="eyebrow">SEU ESPAÇO</span><h2>Seus projetos</h2><p>Cadastre projetos para organizar seu trabalho.</p></div><button class="primary-button" id="open-project-form">+ Novo projeto</button></div>
+        <form class="project-form hidden" id="project-form">
+          <div class="form-heading"><div><h3>Cadastrar projeto</h3><p>Por enquanto, apenas os metadados serão armazenados.</p></div><button type="button" class="icon-button" id="close-project-form" aria-label="Fechar formulário">×</button></div>
+          <label>Nome do projeto<input name="name" maxlength="120" required placeholder="Ex.: Meu aplicativo"></label>
+          <label>Descrição <span class="optional">(opcional)</span><textarea name="description" maxlength="2000" rows="3" placeholder="O que este projeto faz?"></textarea></label>
+          <label>Caminho local <span class="optional">(opcional, apenas referência)</span><input name="root_path" maxlength="500" placeholder="Ex.: C:\Projetos\meu-app"></label>
+          <div class="form-actions"><p id="form-message" role="status"></p><button class="primary-button" type="submit">Salvar projeto</button></div>
+        </form>
+        <div id="project-list" class="project-list" aria-live="polite"><div class="loading-state">Carregando projetos…</div></div>
+      </section>
+      <footer><span>DevPilot AI</span><span>Construído com transparência, segurança e autonomia gradual.</span></footer>
+    </main>
+  </div>
+</body>
+</html>
