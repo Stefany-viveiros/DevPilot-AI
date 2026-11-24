@@ -236,3 +236,57 @@ def test_account_overview_requires_authentication(client, monkeypatch):
     monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
     response = client.get("/api/v1/auth/me")
     assert response.status_code == 401
+
+
+def test_agent_plan_requires_approval_before_applying_changes(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+    archive = make_zip({"src/main.py": "value = 1\n"})
+    imported = client.post("/api/v1/projects/import", data={"name": "Fluxo do agente"},
+                           files={"archive": ("agente.zip", archive, "application/zip")})
+    assert imported.status_code == 201
+    project = imported.json()
+    project_root = routes.WORKSPACE_DIR / project["root_path"]
+    target = project_root / "src" / "main.py"
+
+    monkeypatch.setattr(routes, "create_plan", lambda root, instruction, memory: AgentPlan(
+        summary="Atualizar valor", steps=[{"title": "Editar", "description": "Atualizar o valor inicial"}],
+        proposed_changes=[{"path": "src/main.py", "content": "value = 2\n", "reason": "Atende à solicitação"}],
+        risks=[]
+    ))
+    planned = client.post(f"/api/v1/projects/{project['id']}/tasks",
+                          json={"instruction": "Atualize o valor inicial do módulo"})
+    assert planned.status_code == 201, planned.text
+    task = planned.json()
+    assert task["status"] == "awaiting_approval"
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
+
+    applied = client.post(f"/api/v1/tasks/{task['id']}/approve")
+    assert applied.status_code == 200, applied.text
+    assert applied.json()["status"] == "applied"
+    assert target.read_text(encoding="utf-8") == "value = 2\n"
+    runs = client.get(f"/api/v1/projects/{project['id']}/runs").json()
+    assert any(run["run_type"] == "planning" for run in runs)
+    assert any(run["run_type"] == "apply" for run in runs)
+
+
+def test_rejected_agent_plan_does_not_change_project_files(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+    archive = make_zip({"main.py": "value = 1\n"})
+    imported = client.post("/api/v1/projects/import", data={"name": "Plano rejeitado"},
+                           files={"archive": ("rejeitado.zip", archive, "application/zip")})
+    project = imported.json()
+    target = routes.WORKSPACE_DIR / project["root_path"] / "main.py"
+    monkeypatch.setattr(routes, "create_plan", lambda root, instruction, memory: AgentPlan(
+        summary="Alterar valor", steps=[], proposed_changes=[
+            {"path": "main.py", "content": "value = 99\n", "reason": "Proposta"}
+        ], risks=[]
+    ))
+    planned = client.post(f"/api/v1/projects/{project['id']}/tasks",
+                          json={"instruction": "Altere o valor deste arquivo"})
+    task_id = planned.json()["id"]
+    rejected = client.post(f"/api/v1/tasks/{task_id}/reject")
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "rejected"
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
