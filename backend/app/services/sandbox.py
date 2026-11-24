@@ -54,7 +54,7 @@ def run_python_tests(project_root: Path) -> dict:
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
         "--mount", f"type=bind,src={project_root.resolve()},dst=/workspace,readonly",
         "--env", "PYTHONDONTWRITEBYTECODE=1", "--env", "TMPDIR=/tmp",
-        "--workdir", "/workspace", SANDBOX_IMAGE, "python", "-m", "pytest", "-p", "no:cacheprovider", "-q",
+        "--workdir", "/workspace", SANDBOX_IMAGE, "python", "/opt/devpilot/validate.py",
     ]
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -95,13 +95,34 @@ def run_python_tests(project_root: Path) -> dict:
         Path(cid_path).unlink(missing_ok=True)
 
     captured = output.get("text", "")[-MAX_OUTPUT:]
-    sandbox_description = "Docker sem rede, raiz somente leitura, sem capabilities e com limites de CPU/memória/processos; saída limitada a 12 KB."
+    sandbox_description = (
+        "Docker sem rede, raiz e projeto somente leitura, sem capabilities, limites de CPU/memória/processos; "
+        "pytest e node --check; saída limitada a 12 KB."
+    )
     if timed_out:
         return {"status": "timeout", "exit_code": None,
-                "output": (captured + "\nTempo limite de 120 segundos excedido.")[-MAX_OUTPUT:],
-                "sandbox": sandbox_description}
+                "output": (captured + "\nTempo limite global de 120 segundos excedido.")[-MAX_OUTPUT:],
+                "sandbox": sandbox_description, "checks": []}
     if "Unable to find image" in captured or "pull access denied" in captured:
         raise SandboxUnavailable(f"Imagem {SANDBOX_IMAGE} ausente. Construa-a com: docker build -t {SANDBOX_IMAGE} sandbox/")
-    return {"status": "passed" if return_code == 0 else "failed",
-            "exit_code": return_code, "output": captured,
-            "sandbox": sandbox_description}
+    marker = "RESULTADO_JSON="
+    if marker not in captured:
+        raise SandboxUnavailable("O executor isolado não retornou um relatório válido. Reconstrua a imagem Docker.")
+    report_text = captured.rsplit(marker, 1)[1].strip()
+    try:
+        import json
+        report = json.loads(report_text)
+    except (ValueError, TypeError) as exc:
+        raise SandboxUnavailable("O relatório do executor isolado está inválido. Reconstrua a imagem Docker.") from exc
+    status = report.get("status")
+    if status not in {"passed", "failed", "inconclusive", "not_applicable"}:
+        raise SandboxUnavailable("O executor isolado retornou um estado desconhecido.")
+    output_text = captured.rsplit(marker, 1)[0].strip()
+    return {
+        "status": status,
+        "exit_code": 0 if status in {"passed", "not_applicable"} else (1 if status == "failed" else None),
+        "output": output_text[-MAX_OUTPUT:],
+        "sandbox": sandbox_description,
+        "checks": report.get("checks", []),
+        "javascript_scan_incomplete": bool(report.get("javascript_scan_incomplete", False)),
+    }
