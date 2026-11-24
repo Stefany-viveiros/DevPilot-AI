@@ -31,3 +31,33 @@ def test_real_docker_sandbox_runs_tests_with_read_only_project(tmp_path):
     result = run_python_tests(tmp_path)
     assert result["status"] == "passed", result["output"]
     assert "somente leitura" in result["sandbox"]
+
+
+
+@pytest.mark.skipif(not shutil.which("docker"), reason="Docker não está instalado.")
+def test_real_docker_sandbox_checks_javascript_syntax_without_executing_it(tmp_path):
+    image = subprocess.run(
+        ["docker", "image", "inspect", SANDBOX_IMAGE],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False,
+    )
+    if image.returncode != 0:
+        pytest.skip("Imagem de sandbox ainda não foi construída.")
+
+    tmp_path.chmod(0o755)
+    source = tmp_path / "app.js"
+    source.write_text(
+        "const fs = require('fs');\\n"
+        "fs.writeFileSync('/workspace/nao-deve-existir.txt', 'executado');\\n",
+        encoding="utf-8",
+    )
+    valid = run_python_tests(tmp_path)
+    assert valid["status"] == "passed", valid["output"]
+    checks = {item["name"]: item for item in valid["checks"]}
+    assert checks["javascript_syntax"]["status"] == "passed"
+    assert checks["javascript_syntax"]["files_checked"] == 1
+    assert not (tmp_path / "nao-deve-existir.txt").exists()
+
+    source.write_text("const = ;\\n", encoding="utf-8")
+    invalid = run_python_tests(tmp_path)
+    assert invalid["status"] == "failed"
+    assert "SyntaxError" in invalid["output"]
