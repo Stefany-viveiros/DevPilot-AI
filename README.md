@@ -126,6 +126,7 @@ pytest -q
 - A validação em Docker executa somente pytest com rede desativada; não instala dependências do projeto. A segurança depende de Docker e host atualizados. Não exponha o daemon Docker.
 - O Modo Resgate é estático e sua pontuação é indicativa, não uma avaliação de qualidade comprovada.
 - A autenticação é uma base inicial: ainda faltam verificação de e-mail, recuperação de senha, rate limiting distribuído, sessões revogáveis, cobrança, portal de assinatura, monitoramento e hardening antes de produção. Não exponha a aplicação à internet ainda.
+- Projetos criados anteriormente no modo local sem autenticação ficam sem proprietário (`user_id` nulo) e não aparecem automaticamente em contas autenticadas. Antes de habilitar autenticação em uma base já utilizada, faça backup e planeje a adoção desses projetos por uma conta; não exponha a aplicação à internet.
 - A aprovação autoriza escrita dos arquivos propostos, não garante correção do código. Faça backup e revise as alterações.
 
 ## Estrutura
