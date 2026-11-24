@@ -364,3 +364,20 @@ def test_repair_respects_daily_ai_quota(client, monkeypatch):
     })
     blocked = client.post(f"/api/v1/projects/{project_id}/repair", headers=headers)
     assert blocked.status_code == 429
+
+
+def test_free_plan_project_limit_is_enforced(client, monkeypatch):
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    monkeypatch.setenv("DEVPILOT_AUTH_SECRET", "p" * 48)
+    registered = client.post("/api/v1/auth/register", json={
+        "email": "projetos@example.com", "password": "senha-super-segura-987"
+    })
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    for index in range(3):
+        response = client.post("/api/v1/projects", headers=headers,
+                               json={"name": f"Projeto gratuito {index + 1}"})
+        assert response.status_code == 201
+    blocked = client.post("/api/v1/projects", headers=headers,
+                          json={"name": "Projeto além da cota"})
+    assert blocked.status_code == 429
