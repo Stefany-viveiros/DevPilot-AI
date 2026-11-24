@@ -25,7 +25,7 @@ from app.services.auth import hash_password, verify_password, issue_token, read_
 from app.services.auth_rate_limit import (
     clear_login_failures, is_login_blocked, login_bucket_key, record_failed_login,
 )
-from app.services.agent import AgentProviderError, create_plan, apply_plan, create_checkpoint
+from app.services.agent import AgentProviderError, create_plan, apply_plan, create_checkpoint, restore_checkpoint
 from app.services.rescue import rescue_project
 from app.services.sandbox import SandboxUnavailable, run_python_tests
 from app.schemas.project import (
@@ -378,6 +378,33 @@ def approve_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask
     db.commit()
     db.refresh(task)
     return task
+
+@router.post("/tasks/{task_id}/restore", response_model=TaskRead, tags=["Agente", "Recuperação"])
+def restore_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask:
+    task = db.get(AgentTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+    if task.status != "applied":
+        raise HTTPException(status_code=409, detail="Somente tarefas aplicadas podem ser restauradas.")
+    project = get_existing_project(task.project_id, db)
+    root = get_project_directory(project)
+    checkpoint_path = WORKSPACE_DIR / ".devpilot_checkpoints" / str(project.id) / f"task-{task.id}.zip"
+    if not checkpoint_path.is_file() or checkpoint_path.is_symlink():
+        raise HTTPException(status_code=404, detail="Checkpoint desta tarefa não encontrado.")
+    try:
+        restored = restore_checkpoint(root, checkpoint_path)
+    except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+        raise HTTPException(status_code=422, detail=f"Não foi possível restaurar o checkpoint: {exc}") from exc
+    task.status = "restored"
+    db.add(AgentRun(project_id=project.id, task_id=task.id, run_type="restore", status="completed",
+                    summary="Checkpoint anterior à aplicação restaurado.",
+                    details_json=json.dumps({"files_restored": restored}, ensure_ascii=False)))
+    record_event(db, project.id, "agent_checkpoint_restored", "Checkpoint anterior à tarefa restaurado.",
+                 {"task_id": task.id, "files_restored": restored})
+    db.commit()
+    db.refresh(task)
+    return task
+
 
 @router.post("/tasks/{task_id}/reject", response_model=TaskRead, tags=["Agente"])
 def reject_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask:
