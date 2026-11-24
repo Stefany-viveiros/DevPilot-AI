@@ -16,6 +16,8 @@ def test_real_docker_sandbox_runs_tests_with_read_only_project(tmp_path):
     if image.returncode != 0:
         pytest.skip("Imagem de sandbox ainda não foi construída.")
 
+    # O contêiner usa UID sem privilégios; a pasta montada precisa ser atravessável.
+    tmp_path.chmod(0o755)
     (tmp_path / "test_example.py").write_text(
         "from pathlib import Path\n"
         "def test_project_is_read_only():\n"
