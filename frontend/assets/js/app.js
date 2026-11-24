@@ -135,11 +135,26 @@ function renderProjects(projects) {
           const controls = task.status === "applied"
             ? `<button class="small-button restore-task" data-task-id="${task.id}">Restaurar versão anterior</button>`
             : task.status === "awaiting_approval"
-              ? `<button class="small-button approve-task" data-task-id="${task.id}">Aprovar e aplicar</button><button class="small-button reject-task" data-task-id="${task.id}">Rejeitar</button>`
+              ? `<button class="small-button diff-task" data-task-id="${task.id}">Ver diferenças</button><button class="small-button approve-task" data-task-id="${task.id}">Aprovar e aplicar</button><button class="small-button reject-task" data-task-id="${task.id}">Rejeitar</button>`
               : "";
           return `<article class="task-item"><div class="task-heading"><b>#${task.id} · ${escapeHtml(status)}</b><small>${escapeHtml(new Date(task.created_at).toLocaleString("pt-BR"))}</small></div><p>${escapeHtml(task.instruction)}</p><p>${escapeHtml(plan.summary || "Plano indisponível")}</p><small>${changes.length} arquivo(s) no plano</small>${filesWritten.length ? `<details><summary>Arquivos aplicados (${filesWritten.length})</summary><ul>${filesWritten.map(path => `<li>${escapeHtml(path)}</li>`).join("")}</ul></details>` : ""}<div class="task-controls">${controls}</div></article>`;
         }).join("") : "<p>Nenhuma tarefa criada para este projeto.</p>"}<p class="task-feedback" role="status"></p><p class="agent-warning">Restaurar substitui os arquivos alterados pela cópia de segurança anterior à tarefa. Faça isso somente se tiver certeza.</p>`;
         const feedback = panel.querySelector(".task-feedback");
+        panel.querySelectorAll(".diff-task").forEach((action) => action.addEventListener("click", async () => {
+          action.disabled = true;
+          try {
+            const preview = await request(`/tasks/${action.dataset.taskId}/diff`);
+            const taskItem = action.closest(".task-item");
+            let diffPanel = taskItem.querySelector(".task-diff");
+            if (!diffPanel) {
+              diffPanel = document.createElement("div");
+              diffPanel.className = "task-diff";
+              taskItem.append(diffPanel);
+            }
+            diffPanel.innerHTML = preview.files.map(file => `<section><b>${escapeHtml(file.path)} ${file.is_new ? "(novo arquivo)" : ""}</b><pre>${escapeHtml(file.diff || "Nenhuma diferença textual.")}</pre></section>`).join("");
+          } catch (error) { feedback.textContent = error.message; }
+          finally { action.disabled = false; }
+        }));
         panel.querySelectorAll(".approve-task").forEach((action) => action.addEventListener("click", async () => {
           if (!confirm("Aplicar as alterações desta tarefa? O DevPilot criará um checkpoint antes de gravar.")) return;
           action.disabled = true;
