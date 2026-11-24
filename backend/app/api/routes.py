@@ -129,8 +129,6 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Pro
     if user_id is not None:
         user = db.get(User, user_id)
         limit = 3 if user.plan == "free" else 25
-        if db.scalar(select(Project.id).where(Project.user_id == user_id).limit(limit).count()) if False else False:
-            pass
         existing = len(db.scalars(select(Project.id).where(Project.user_id == user_id)).all())
         if existing >= limit:
             raise HTTPException(status_code=429, detail=f"Limite do plano {user.plan}: {limit} projetos.")
@@ -162,11 +160,18 @@ async def import_project(
     except ArchiveValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
+    user_id = _current_user_id.get()
+    if user_id is not None:
+        user = db.get(User, user_id)
+        limit = 3 if user.plan == "free" else 25
+        existing = len(db.scalars(select(Project.id).where(Project.user_id == user_id)).all())
+        if existing >= limit:
+            raise HTTPException(status_code=429, detail=f"Limite do plano {user.plan}: {limit} projetos.")
     project = Project(
         name=name.strip(),
         description=description,
         root_path=result.storage_path,
-        user_id=_current_user_id.get(),
+        user_id=user_id,
         status="imported",
     )
     try:
@@ -270,6 +275,7 @@ def create_agent_task(project_id: int, payload: TaskCreate, db: Session = Depend
                      status="awaiting_approval", plan_json=plan.model_dump_json())
     db.add(task)
     db.flush()
+    db.add(AgentRun(project_id=project.id, task_id=task.id, run_type="planning", status="completed", summary="Plano criado pelo provedor de IA local."))
     record_event(db, project.id, "agent_plan_created", "Plano criado e aguardando aprovação.", {"task_id": task.id})
     db.commit()
     db.refresh(task)
