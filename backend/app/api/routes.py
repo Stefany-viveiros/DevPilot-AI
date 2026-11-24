@@ -36,6 +36,7 @@ _bearer = HTTPBearer(auto_error=False)
 
 async def enforce_auth(credentials: HTTPAuthorizationCredentials | None = Depends(_bearer), db: Session = Depends(get_db)):
     if not AUTH_REQUIRED:
+        yield
         return
     if credentials is None or credentials.scheme.lower() != "bearer":
         raise HTTPException(status_code=401, detail="Autenticação necessária.", headers={"WWW-Authenticate": "Bearer"})
