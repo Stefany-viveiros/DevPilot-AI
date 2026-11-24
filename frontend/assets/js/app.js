@@ -123,6 +123,7 @@ function renderProjects(projects) {
         submit.disabled = true; submit.textContent = "Planejando…"; feedback.textContent = "";
         try {
           const task = await request(`/projects/${card.dataset.projectId}/tasks`, {method:"POST", body:JSON.stringify({instruction:prompt})});
+          await loadAccount();
           const plan = JSON.parse(task.plan_json);
           const planBox = panel.querySelector(".agent-plan");
           planBox.innerHTML = `<h4>${escapeHtml(plan.summary)}</h4><ol>${(plan.steps || []).map(step => `<li><b>${escapeHtml(step.title || "")}</b><p>${escapeHtml(step.description || "")}</p></li>`).join("")}</ol><h4>Arquivos propostos: ${(plan.proposed_changes || []).length}</h4><ul>${(plan.proposed_changes || []).map(change => "<li><b>" + escapeHtml(change.path) + "</b> — " + escapeHtml(change.reason || "") + "<pre>" + escapeHtml(change.content || "") + "</pre></li>").join("") || "<li>Nenhum arquivo será alterado.</li>"}</ul><h4>Riscos</h4><ul>${(plan.risks || []).map(risk => "<li>" + escapeHtml(risk) + "</li>").join("") || "<li>Nenhum risco informado pelo modelo.</li>"}</ul><p class="agent-warning">Revise o conteúdo completo de cada arquivo. Aprovar aplica as alterações exibidas.</p>${(plan.proposed_changes || []).length ? '<button class="small-button approve-agent">Aprovar e aplicar</button>' : '<span>Não há alterações para aplicar.</span>'} <button class="small-button reject-agent">Rejeitar</button>`;
@@ -173,6 +174,7 @@ function renderProjects(projects) {
       const card=button.closest(".project-card"); button.disabled=true; button.textContent="Testando…";
       try {
         const result=await request(`/projects/${card.dataset.projectId}/repair`,{method:"POST"});
+        await loadAccount();
         showCardMessage(card,`Validação: ${result.validation.status}. ${result.validation.output || ""}`,result.validation.status!=="passed");
         let panel=card.querySelector(".repair-panel");
         if (!panel) { panel=document.createElement("div"); panel.className="repair-panel"; card.append(panel); }
