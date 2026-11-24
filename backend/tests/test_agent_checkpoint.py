@@ -4,7 +4,7 @@ import zipfile
 import pytest
 
 from app.schemas.agent import AgentPlan
-from app.services.agent import create_checkpoint
+from app.services.agent import create_checkpoint, restore_checkpoint
 
 
 def make_plan(*paths):
@@ -57,3 +57,35 @@ def test_checkpoint_rejects_symlink_target(tmp_path):
         create_checkpoint(project, make_plan("linked.py"), destination)
 
     assert not destination.exists()
+
+
+def test_restore_checkpoint_reverts_existing_file_and_removes_new_file(tmp_path):
+    project = tmp_path / "projeto"
+    project.mkdir()
+    original = project / "app.py"
+    original.write_text("versão original", encoding="utf-8")
+    destination = tmp_path / "backups" / "task-4.zip"
+    plan = make_plan("app.py", "novo.py")
+    create_checkpoint(project, plan, destination)
+
+    original.write_text("versão modificada", encoding="utf-8")
+    (project / "novo.py").write_text("arquivo criado pela tarefa", encoding="utf-8")
+    restored = restore_checkpoint(project, destination)
+
+    assert set(restored) == {"app.py", "novo.py"}
+    assert original.read_text(encoding="utf-8") == "versão original"
+    assert not (project / "novo.py").exists()
+
+
+def test_restore_rejects_corrupt_checkpoint_without_changing_project(tmp_path):
+    project = tmp_path / "projeto"
+    project.mkdir()
+    target = project / "app.py"
+    target.write_text("não alterar", encoding="utf-8")
+    destination = tmp_path / "corrupt.zip"
+    destination.write_text("arquivo inválido", encoding="utf-8")
+
+    with pytest.raises(zipfile.BadZipFile):
+        restore_checkpoint(project, destination)
+
+    assert target.read_text(encoding="utf-8") == "não alterar"
