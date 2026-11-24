@@ -135,6 +135,19 @@ def record_event(db: Session, project_id: int, event_type: str, summary: str, de
         details_json=json.dumps(details, ensure_ascii=False) if details is not None else None,
     ))
 
+def enforce_ai_task_quota(user: User) -> None:
+    now = datetime.now(timezone.utc)
+    reset = user.usage_reset_at
+    if reset.tzinfo is None:
+        reset = reset.replace(tzinfo=timezone.utc)
+    if (now - reset).total_seconds() >= 86400:
+        user.tasks_used_today = 0
+        user.usage_reset_at = now
+    limit = 10 if user.plan == "free" else 250
+    if user.tasks_used_today >= limit:
+        raise HTTPException(status_code=429, detail=f"Limite diário do plano {user.plan}: {limit} tarefas.")
+
+
 def get_existing_project(project_id: int, db: Session) -> Project:
     project = db.get(Project, project_id)
     user_id = _current_user_id.get()
@@ -298,18 +311,9 @@ def create_agent_task(project_id: int, payload: TaskCreate, db: Session = Depend
     project = get_existing_project(project_id, db)
     root = get_project_directory(project)
     user_id = _current_user_id.get()
-    if user_id is not None:
-        user = db.get(User, user_id)
-        now = datetime.now(timezone.utc)
-        reset = user.usage_reset_at
-        if reset.tzinfo is None:
-            reset = reset.replace(tzinfo=timezone.utc)
-        if (now - reset).days >= 1:
-            user.tasks_used_today = 0
-            user.usage_reset_at = now
-        limit = 10 if user.plan == "free" else 250
-        if user.tasks_used_today >= limit:
-            raise HTTPException(status_code=429, detail=f"Limite diário do plano {user.plan}: {limit} tarefas.")
+    user = db.get(User, user_id) if user_id is not None else None
+    if user is not None:
+        enforce_ai_task_quota(user)
     try:
         memories = db.scalars(select(ProjectMemory).where(ProjectMemory.project_id == project.id)).all()
         memory_context = "\n".join(f"{item.memory_key}: {item.content}" for item in memories)
@@ -464,6 +468,10 @@ def validate_and_propose_repair(project_id: int, db: Session = Depends(get_db)):
         record_event(db, project.id, "repair_not_proposed", reason, {"status": validation["status"]})
         db.commit()
         return {"validation": validation, "task": None, "planning_error": reason}
+    user_id = _current_user_id.get()
+    user = db.get(User, user_id) if user_id is not None else None
+    if user is not None:
+        enforce_ai_task_quota(user)
     memories = db.scalars(select(ProjectMemory).where(ProjectMemory.project_id == project.id)).all()
     memory_context = "\n".join(f"{item.memory_key}: {item.content}" for item in memories)
     instruction = (
@@ -478,6 +486,8 @@ def validate_and_propose_repair(project_id: int, db: Session = Depends(get_db)):
         record_event(db, project.id, "repair_planning_unavailable", "Testes falharam, mas não foi possível gerar uma proposta.", {"reason": str(exc)})
         db.commit()
         return {"validation": validation, "task": None, "planning_error": str(exc)}
+    if user is not None:
+        user.tasks_used_today += 1
     task = AgentTask(project_id=project.id, instruction=instruction,
                      status="awaiting_approval", plan_json=plan.model_dump_json())
     db.add(task)
