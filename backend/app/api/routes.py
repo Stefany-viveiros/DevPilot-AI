@@ -1,6 +1,7 @@
 import json
 import re
 import shutil
+import zipfile
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
@@ -393,7 +394,7 @@ def restore_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask
         raise HTTPException(status_code=404, detail="Checkpoint desta tarefa não encontrado.")
     try:
         restored = restore_checkpoint(root, checkpoint_path)
-    except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
+    except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError, zipfile.BadZipFile) as exc:
         raise HTTPException(status_code=422, detail=f"Não foi possível restaurar o checkpoint: {exc}") from exc
     task.status = "restored"
     db.add(AgentRun(project_id=project.id, task_id=task.id, run_type="restore", status="completed",
