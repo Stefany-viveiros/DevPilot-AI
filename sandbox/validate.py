@@ -3,6 +3,7 @@ import json
 import os
 import subprocess
 import tempfile
+import tokenize
 from pathlib import Path
 
 ROOT = Path("/workspace")
@@ -121,7 +122,8 @@ def main():
     python_failures = 0
     for path in sources["python"]:
         try:
-            ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            with tokenize.open(path) as source_file:
+                ast.parse(source_file.read(), filename=str(path))
         except (SyntaxError, UnicodeError, OSError) as exc:
             python_failures += 1
             if isinstance(exc, SyntaxError):
