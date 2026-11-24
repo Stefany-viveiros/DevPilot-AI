@@ -6,6 +6,8 @@ from app.schemas.agent import AgentPlan
 
 BLOCKED = {".git", ".venv", "venv", "node_modules", "__pycache__", ".env", ".env.local", ".env.production"}
 SENSITIVE = ("secret", "token", "password", "credential", "id_rsa", "api_key", "api-key", "private_key", "private-key")
+MAX_PLAN_RESPONSE_BYTES = 1_000_000
+MAX_BACKUP_FILE_BYTES = 10 * 1024 * 1024
 
 class AgentProviderError(RuntimeError):
     pass
@@ -60,7 +62,10 @@ MEMÓRIA TÉCNICA DO PROJETO:\n{memory_context[:12000]}\nCONTEXTO:{_context(root
     req = urllib.request.Request(base + "/api/generate", data=body, headers={"Content-Type":"application/json"})
     try:
         with urllib.request.urlopen(req, timeout=90) as response:
-            raw = json.loads(response.read().decode()).get("response", "")
+            response_bytes = response.read(MAX_PLAN_RESPONSE_BYTES + 1)
+        if len(response_bytes) > MAX_PLAN_RESPONSE_BYTES:
+            raise AgentProviderError("A resposta da IA excedeu o limite de 1 MB.")
+        raw = json.loads(response_bytes.decode()).get("response", "")
         plan = AgentPlan.model_validate(json.loads(raw))
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise AgentProviderError("Ollama indisponível. Inicie o Ollama e baixe o modelo configurado.") from exc
@@ -85,6 +90,8 @@ def apply_plan(root: Path, plan: AgentPlan) -> list[str]:
     try:
         for target, item in targets:
             target.parent.mkdir(parents=True, exist_ok=True)
+            if target.exists() and target.stat().st_size > MAX_BACKUP_FILE_BYTES:
+                raise ValueError("O arquivo existente excede o limite seguro de 10 MB para backup.")
             backups[target] = target.read_bytes() if target.exists() else None
             temp = target.with_name(target.name + ".devpilot-tmp")
             temp.write_text(item["content"], encoding="utf-8")
