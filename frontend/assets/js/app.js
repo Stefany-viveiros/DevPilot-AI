@@ -251,7 +251,7 @@ async function loadAccount() {
   if (!usage) return;
   try {
     const account = await request("/auth/me");
-    usage.textContent = `${account.email} · Projetos ${account.projects_used}/${account.projects_limit} · IA hoje ${account.tasks_used_today}/${account.tasks_limit}`;
+    usage.textContent = `${account.email} · Projetos ${account.projects_used}/${account.projects_limit} · IA/24h ${account.tasks_used_today}/${account.tasks_limit}`;
     usage.hidden = false;
   } catch {
     usage.hidden = true;
