@@ -381,3 +381,24 @@ def test_free_plan_project_limit_is_enforced(client, monkeypatch):
     blocked = client.post("/api/v1/projects", headers=headers,
                           json={"name": "Projeto além da cota"})
     assert blocked.status_code == 429
+
+
+def test_import_quota_removes_extracted_files_when_limit_is_reached(client, monkeypatch):
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    monkeypatch.setenv("DEVPILOT_AUTH_SECRET", "i" * 48)
+    registered = client.post("/api/v1/auth/register", json={
+        "email": "importacoes@example.com", "password": "senha-super-segura-852"
+    })
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    archive = make_zip({"main.py": "print('ok')"})
+    for index in range(3):
+        response = client.post("/api/v1/projects/import", headers=headers,
+                               data={"name": f"Importação {index + 1}"},
+                               files={"archive": (f"projeto{index}.zip", archive, "application/zip")})
+        assert response.status_code == 201
+    blocked = client.post("/api/v1/projects/import", headers=headers,
+                          data={"name": "Importação excedente"},
+                          files={"archive": ("excedente.zip", archive, "application/zip")})
+    assert blocked.status_code == 429
+    assert len(list(routes.WORKSPACE_DIR.iterdir())) == 3
