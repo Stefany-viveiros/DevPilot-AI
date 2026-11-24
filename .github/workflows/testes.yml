@@ -30,6 +30,8 @@ jobs:
           node-version: "20"
       - name: Validar sintaxe do painel
         run: node --check frontend/assets/js/app.js
+      - name: Construir imagem isolada de testes
+        run: docker build -t devpilot-sandbox:py311 sandbox/
       - name: Executar testes
         working-directory: backend
         run: pytest -q
