@@ -61,3 +61,17 @@ def test_rejects_oversized_model_response(tmp_path, monkeypatch):
     with patch("app.services.agent.urllib.request.urlopen", return_value=LargeResponse()):
         with pytest.raises(AgentProviderError, match="1 MB"):
             create_plan(tmp_path, "Analise o projeto e proponha melhorias")
+
+
+def test_apply_rejects_duplicate_file_paths(tmp_path):
+    plan = AgentPlan.model_validate({
+        "summary": "Alterar duas vezes", "steps": [],
+        "proposed_changes": [
+            {"path": "main.py", "content": "primeiro", "reason": "a"},
+            {"path": "main.py", "content": "segundo", "reason": "b"},
+        ],
+        "risks": [],
+    })
+    with pytest.raises(ValueError, match="duplicados"):
+        apply_plan(tmp_path, plan)
+    assert not (tmp_path / "main.py").exists()
