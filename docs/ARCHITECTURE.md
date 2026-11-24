@@ -2,18 +2,21 @@
 
 ## Direção
 
-O DevPilot começa como um monólito modular. Isso reduz custo operacional e complexidade enquanto as fronteiras entre domínio, API, persistência e ferramentas amadurecem.
+O DevPilot é um monólito modular. Essa escolha mantém a execução local simples e de baixo custo enquanto separa domínio, API, persistência, interface e ferramentas. A arquitetura permite evoluir para serviços gerenciados posteriormente, sem presumir que a versão atual já seja um SaaS de produção.
 
 ## Componentes atuais
 
 - **Interface:** HTML, CSS e JavaScript sem framework obrigatório; servida pela API.
-- **API:** FastAPI com contratos Pydantic e rotas versionadas em `/api/v1`.
-- **Persistência:** SQLAlchemy 2 e SQLite local. Acesso ao banco isolado para permitir futura troca por PostgreSQL.
-- **Importação:** ZIP recebido pela API, extraído em diretório próprio dentro de `workspace/`.
-- **Análise:** inventário de arquivos, manifestos, extensões, linguagens prováveis e pontos de entrada. Nenhum arquivo do projeto é executado.
-- **Histórico:** eventos de cadastro, importação, atualização e análise persistidos por projeto.
-- **Testes:** pytest e TestClient, usando SQLite em memória.
-- **CI:** GitHub Actions instala dependências e executa os testes em pushes para `main` e pull requests.
+- **API:** FastAPI, contratos Pydantic e rotas versionadas em `/api/v1`.
+- **Persistência:** SQLAlchemy 2 e SQLite local; configuração permite apontar para outro banco compatível, mas PostgreSQL ainda precisa de validação operacional.
+- **Identidade:** cadastro/login opcionais, hash PBKDF2-SHA256, tokens HMAC com expiração e isolamento de projetos por conta.
+- **Importação:** ZIP extraído em diretório próprio dentro de `workspace/`, sem executar arquivos.
+- **Análise:** inventário estrutural de arquivos, manifestos, linguagens prováveis e pontos de entrada.
+- **Planejamento:** Ollama local, contexto limitado, plano estruturado e aprovação humana antes de gravar arquivos.
+- **Validação:** pytest em contêiner Docker com rede desativada e limites de recursos.
+- **Memória e histórico:** memória técnica por projeto, eventos e registros de execução.
+- **Modo Resgate:** diagnóstico estático e recomendações priorizadas.
+- **CI:** GitHub Actions testa Python 3.11 e 3.13, valida a sintaxe do JavaScript e do inicializador Bash, constrói a imagem Docker e executa testes unitários e de integração.
 
 ## Fluxo atual
 
@@ -21,52 +24,59 @@ O DevPilot começa como um monólito modular. Isso reduz custo operacional e com
 Navegador -> Dashboard -> FastAPI -> Rotas/Serviços -> Workspace autorizado
                                          |                  |
                                          +-> SQLAlchemy -> SQLite
-                                         +-> Histórico
+                                         +-> Ollama local (planejamento)
+                                         +-> Docker (pytest isolado)
+                                         +-> Eventos e relatórios persistidos
 ```
 
-## Importação e limites
+## Importação e análise
 
 A importação limita ZIP a 20 MB, até 2.000 entradas, 100 MB descompactados e 10 MB por arquivo. Caminhos absolutos, travessia de diretório, links simbólicos, arquivos protegidos por senha e taxas de compressão excessivas são recusados.
 
-Diretórios comuns de dependências, ambientes virtuais e arquivos com nomes/extensões sensíveis comuns são ignorados. Isso reduz exposição acidental, mas não substitui um scanner de segredos: o usuário deve revisar o arquivo antes de enviá-lo.
+Diretórios comuns de dependências, ambientes virtuais e arquivos com nomes/extensões sensíveis comuns são ignorados. Isso reduz exposição acidental, mas não substitui um scanner de segredos: o usuário deve revisar o arquivo antes de enviá-lo. A análise é estrutural e não comprova que todas as tecnologias foram detectadas.
 
 ## Limites de segurança
 
-O caminho persistido é relativo ao workspace e é validado novamente antes da análise. A análise percorre somente a raiz autorizada, ignora diretórios comuns de dependências e não segue links simbólicos. Nenhum script, instalador ou comando do projeto é executado.
+O caminho persistido é relativo ao workspace e é validado novamente antes das operações de arquivo. A análise não segue links simbólicos. Nenhum script, instalador ou comando arbitrário do projeto é executado pelo agente.
 
-Ainda não há autenticação ou autorização multiusuário. A aplicação deve permanecer local até a implementação dessas camadas. Execução de código de terceiros exigirá isolamento real (por exemplo, contêineres com limites de recursos), escopo de arquivos autorizado, allowlist de operações, trilha de auditoria e aprovações para ações de risco. Uma lista de comandos permitidos, isoladamente, não é uma sandbox.
+A autenticação é opcional e fica desativada no modo local padrão. Quando habilitada, os projetos são filtrados por proprietário. Projetos criados antes da autenticação podem permanecer sem proprietário e não são automaticamente associados à primeira conta. Faça backup e planeje a migração antes de ativar autenticação em uma base já utilizada.
 
-## Compatibilidade do banco
+A aprovação autoriza apenas os arquivos propostos; não comprova que o código esteja correto. O usuário deve revisar as alterações e executar novamente a validação. A aplicação deve permanecer vinculada a `127.0.0.1` durante o uso local. Não exponha a API ou o daemon Docker à internet.
 
-A inicialização aplica uma migração aditiva pequena para bancos SQLite já criados na Fase 1, adicionando os campos de análise sem apagar os projetos existentes. Migrações completas e versionadas (Alembic) devem ser adotadas antes de ampliar o esquema ou oferecer PostgreSQL em produção.
+## Planejamento com IA local
+
+O planejador envia ao Ollama local uma solicitação e um contexto textual limitado a 80 KB, excluindo diretórios comuns de dependências/controle de versão e arquivos com nomes indicativos de credenciais. A resposta do modelo é limitada a 1 MB e validada como plano estruturado. O plano permite no máximo 20 arquivos e 200 KB por conteúdo.
+
+A aplicação bloqueia traversal, caminhos absolutos, symlinks, pastas protegidas, nomes sensíveis e caminhos duplicados. A escrita é atômica, usa arquivos temporários exclusivos e preserva permissões. Arquivos existentes acima de 10 MB não são substituídos, para evitar backups grandes em memória. Se uma gravação falhar, as alterações anteriores da mesma operação são revertidas. Não há execução de shell, instalação de pacotes ou alterações automáticas sem aprovação.
+
+## Validação em sandbox
+
+A execução de testes Python é delegada ao Docker por uma lista fixa de argumentos: sem shell, sem rede, filesystem raiz somente leitura, projeto montado como somente leitura, remoção de capabilities, `no-new-privileges`, limites de memória/CPU/processos e timeout de 120 segundos. A saída retida em memória é limitada a 12 KB. Em timeout, o executor tenta encerrar o contêiner identificado pelo arquivo CID.
+
+A imagem `devpilot-sandbox:py311` contém pytest. Não há instalação de dependências específicas do projeto nem comandos arbitrários. Docker é requisito para esta operação. A CI constrói a imagem e executa um teste de integração real que confirma a execução de pytest e a montagem somente leitura. Quando os testes falham, a rota de reparo envia a saída limitada ao planejador local e gera uma tarefa pendente de aprovação. Timeout ou resultado inconclusivo não gera proposta de reparo. Após aprovação, a nova validação é uma ação separada e registrada.
+
+## Memória, histórico e Modo Resgate
+
+`ProjectMemory` armazena pares chave/conteúdo por projeto. A análise estrutural atualiza automaticamente o perfil de tecnologias, pontos de entrada e contagem de arquivos; notas manuais são incluídas no contexto do planejador.
+
+`AgentRun` persiste o resumo e os resultados de planejamento, aplicação, diagnóstico e validação. O painel apresenta eventos do projeto e evidências das execuções.
+
+O Modo Resgate identifica documentação, testes, manifestos e marcadores TODO/FIXME/NotImplementedError. Produz achados com severidade, recomendações e pontuação heurística. O diagnóstico é estático, não executa o projeto e não afirma que encontrou todos os defeitos.
+
+## Preparação SaaS inicial
+
+Há cadastro/login, hash PBKDF2-SHA256 com salt, tokens HMAC com expiração, isolamento de projetos por usuário e cotas iniciais. O plano gratuito possui limite de 3 projetos e 10 tarefas de IA por janela de 24 horas; os demais planos configurados no código têm limites provisórios de 25 projetos e 250 tarefas por janela. Esses valores não representam planos comerciais ativos.
+
+Ainda faltam verificação de e-mail, recuperação de senha, rate limiting distribuído, revogação de tokens, organizações, cobrança, portal de assinatura, monitoramento/observabilidade operacional, migrações versionadas, revisão de segurança independente e implantação segura. Portanto, esta base é destinada ao uso local e testes controlados, não deve ser considerada pronta para produção pública.
+
+## Inicialização local
+
+No Windows com Git Bash, execute `bash scripts/iniciar.sh` na raiz do repositório. O inicializador cria o ambiente virtual, instala dependências, tenta construir a imagem Docker quando o serviço está disponível e inicia o servidor em `http://127.0.0.1:8000`. Ollama e Docker são opcionais para abrir o painel, mas necessários para planejamento por IA e validação isolada, respectivamente.
 
 ## Próximas fronteiras
 
-1. Provedores de IA intercambiáveis, incluindo opção local.
-2. Planejador que transforma solicitações em planos revisáveis.
-3. Executor de ferramentas com checkpoints, limites de tempo e aprovação humana.
-4. Validação baseada em testes e evidências persistidas.
-
-
-## Planejamento com IA local (Fase 3)
-
-O planejador envia ao Ollama local uma solicitação e um contexto textual limitado (até 80 KB), excluindo diretórios comuns de dependências/controle de versão e arquivos com nomes indicativos de credenciais. O resultado é validado como plano estruturado e persistido como tarefa pendente. A pessoa usuária pode aprovar ou rejeitar no painel.
-
-A aprovação permite apenas escrita de arquivos dentro da raiz do projeto, com bloqueio de traversal, caminhos absolutos, symlinks, pastas protegidas e nomes sensíveis. O limite é de 20 arquivos e 200 KB por arquivo. Não há execução de shell, instalação de pacotes ou testes automáticos nesta fase. A validação de caminhos é defesa em profundidade, não substitui isolamento de sistema operacional contra processos locais concorrentes.
-
-
-## Fase 4 — validação em sandbox
-
-A execução de testes Python é delegada ao Docker por uma lista fixa de argumentos: sem shell, sem rede, filesystem raiz somente leitura, projeto montado como somente leitura, remoção de capabilities, no-new-privileges, limites de memória/CPU/processos e timeout de 120 segundos. A imagem devpilot-sandbox:py311 contém pytest. Não há instalação de dependências específicas do projeto nem comandos arbitrários. Docker é requisito para esta operação. Quando os testes falham, a rota de reparo envia a saída limitada ao planejador local e gera uma tarefa pendente de aprovação. A aprovação aplica os arquivos; a nova validação é uma ação separada e registrada, para evitar ciclos automáticos sem supervisão.
-
-## Fase 5 — memória técnica
-
-ProjectMemory armazena pares chave/conteúdo por projeto. A análise estrutural atualiza automaticamente o perfil de tecnologias, pontos de entrada e contagem de arquivos; notas manuais podem ser adicionadas e são incluídas no contexto do planejador. AgentRun persiste o resumo e os resultados de diagnósticos e validações.
-
-## Fase 6 — Modo Resgate
-
-O diagnóstico estático identifica documentação, testes, manifestos e marcadores TODO/FIXME/NotImplementedError. Produz achados com severidade, recomendações e uma pontuação heurística. Não executa o projeto e não afirma que encontrou todos os defeitos.
-
-## Fase 7 — preparação SaaS inicial
-
-Há cadastro/login, hash PBKDF2-SHA256 com salt, tokens HMAC com expiração, isolamento de projetos por usuário e cotas iniciais por plano. A autenticação é opt-in por configuração para preservar o modo local. O plano gratuito possui cotas locais iniciais. Ainda não há cobrança, verificação de e-mail, recuperação de senha, rate limiting distribuído, revogação de tokens, organizações, observabilidade operacional ou revisão de segurança independente. Portanto, esta base não deve ser considerada pronta para produção pública.
+1. Teste manual de ponta a ponta no notebook de desenvolvimento, incluindo Docker Desktop e Ollama.
+2. Checkpoints persistentes e restauração segura de arquivos.
+3. Melhor cobertura para stacks além de Python, sem comandos arbitrários.
+4. Rate limiting, recuperação de conta, migrações versionadas e hardening antes de qualquer operação multiusuário pública.
+5. Revisão independente de segurança, observabilidade, cobrança e implantação somente depois de validar a experiência local.
