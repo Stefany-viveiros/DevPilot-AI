@@ -1,3 +1,4 @@
+import ast
 import json
 import os
 import subprocess
@@ -10,6 +11,7 @@ MAX_SOURCE_FILES = 100
 MAX_SOURCE_FILE_BYTES = 1_000_000
 MAX_SOURCE_TOTAL_BYTES = 20_000_000
 MAX_CAPTURE_BYTES = 12_000
+PY_SUFFIXES = {".py"}
 JS_SUFFIXES = {".js", ".mjs", ".cjs"}
 TS_SUFFIXES = {".ts", ".tsx", ".mts", ".cts", ".jsx"}
 TS_CHECK_SCRIPT = """
@@ -56,7 +58,7 @@ def run_check(command, timeout):
 
 
 def discover_sources():
-    found = {"javascript": [], "typescript": []}
+    found = {"python": [], "javascript": [], "typescript": []}
     total_bytes = 0
     incomplete = False
     for current, dirs, files in os.walk(ROOT, followlinks=False):
@@ -65,7 +67,9 @@ def discover_sources():
         for name in files:
             path = Path(current) / name
             suffix = path.suffix.lower()
-            if suffix in JS_SUFFIXES:
+            if suffix in PY_SUFFIXES:
+                group = "python"
+            elif suffix in JS_SUFFIXES:
                 group = "javascript"
             elif suffix in TS_SUFFIXES:
                 group = "typescript"
@@ -114,6 +118,26 @@ def main():
         output_parts.append("=== Testes Python (pytest) ===\nNenhum arquivo de teste Python foi encontrado.")
 
     sources, scan_incomplete = discover_sources()
+    python_failures = 0
+    for path in sources["python"]:
+        try:
+            ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        except (SyntaxError, UnicodeError, OSError) as exc:
+            python_failures += 1
+            if isinstance(exc, SyntaxError):
+                location = f"{exc.lineno or 0}:{exc.offset or 0}: {exc.msg}"
+            else:
+                location = str(exc)
+            output_parts.append(f"=== Sintaxe Python: {path.relative_to(ROOT)} ===\\n{location}")
+    if sources["python"]:
+        results.append({"name": "python_syntax", "status": "failed" if python_failures else "passed",
+                        "files_checked": len(sources["python"]), "failures": python_failures})
+        output_parts.append(
+            f"Verificação de sintaxe Python: {len(sources['python'])} arquivo(s), {python_failures} falha(s)."
+        )
+    else:
+        results.append({"name": "python_syntax", "status": "skipped", "files_checked": 0})
+        output_parts.append("Nenhum arquivo Python encontrado para análise sintática.")
     checks = (
         ("javascript_syntax", "JavaScript", sources["javascript"],
          lambda path: ["node", "--check", str(path)], 5, ".js/.mjs/.cjs"),
