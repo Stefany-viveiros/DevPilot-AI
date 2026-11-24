@@ -137,3 +137,21 @@ def test_project_memory_and_rescue_endpoints(client):
     assert "findings" in report.json()
     runs = client.get(f"/api/v1/projects/{project_id}/runs")
     assert any(run["run_type"] == "rescue" for run in runs.json())
+
+
+def test_authentication_isolates_project_accounts(client, monkeypatch):
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    monkeypatch.setenv("DEVPILOT_AUTH_SECRET", "s" * 48)
+    first = client.post("/api/v1/auth/register", json={"email":"a@example.com","password":"senha-super-segura-123"})
+    second = client.post("/api/v1/auth/register", json={"email":"b@example.com","password":"senha-super-segura-456"})
+    assert first.status_code == 201 and second.status_code == 201
+    token_a = first.json()["access_token"]
+    token_b = second.json()["access_token"]
+    created = client.post("/api/v1/projects", headers={"Authorization":f"Bearer {token_a}"},
+                          json={"name":"Projeto privado"})
+    project_id = created.json()["id"]
+    hidden = client.get(f"/api/v1/projects/{project_id}", headers={"Authorization":f"Bearer {token_b}"})
+    assert hidden.status_code == 404
+    own = client.get(f"/api/v1/projects/{project_id}", headers={"Authorization":f"Bearer {token_a}"})
+    assert own.status_code == 200
