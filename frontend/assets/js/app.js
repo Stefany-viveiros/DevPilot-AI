@@ -250,7 +250,10 @@ function renderProjects(projects) {
       const card = button.closest(".project-card"); button.disabled = true; button.textContent = "Testando…";
       try {
         const result = await request(`/projects/${card.dataset.projectId}/validate`, {method:"POST"});
-        showCardMessage(card, `Testes: ${result.status} (código ${result.exit_code}). ${result.output || ""}`, result.status !== "passed");
+        const checkLabels = {pytest:"Testes Python", javascript_syntax:"Sintaxe JavaScript"};
+        const checksSummary = (result.checks || []).map((check) => `${checkLabels[check.name] || check.name}: ${check.status}`).join(" · ");
+        const statusLabels = {passed:"aprovado", failed:"falhou", timeout:"tempo esgotado", inconclusive:"inconclusivo", not_applicable:"sem verificações aplicáveis"};
+        showCardMessage(card, `Validação: ${statusLabels[result.status] || result.status}. ${checksSummary}. ${result.output || ""}`, !["passed","not_applicable"].includes(result.status));
       } catch(error) { showCardMessage(card,error.message,true); }
       finally { button.disabled = false; button.textContent = "Validar"; }
     });
