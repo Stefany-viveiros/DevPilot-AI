@@ -23,3 +23,9 @@ def test_apply_writes_only_when_called(tmp_path):
 def test_empty_plan_cannot_be_applied(tmp_path):
     plan = AgentPlan.model_validate({"summary":"Sem mudanças", "steps":[], "proposed_changes":[], "risks":[]})
     with pytest.raises(ValueError): apply_plan(tmp_path, plan)
+
+
+@pytest.mark.parametrize("path", [".env.development", "config/private_key.json", "certificados/chave.pem"])
+def test_rejects_sensitive_paths(tmp_path, path):
+    with pytest.raises(ValueError):
+        validate_path(tmp_path, path)
