@@ -66,7 +66,7 @@ Acesse:
 - Saúde da API: http://127.0.0.1:8000/api/v1/health
 - Documentação interativa: http://127.0.0.1:8000/docs
 
-Para validação isolada, construa a imagem de testes na raiz do repositório com: docker build -t devpilot-sandbox:py311 sandbox/. A validação executa pytest dentro do contêiner sem rede, com projeto montado como somente leitura e limites de recursos. A imagem inclui pytest, mas não instala dependências específicas de cada projeto.
+Para validação isolada, construa a imagem de testes na raiz do repositório com: docker build -t devpilot-sandbox:py311 sandbox/. A validação executa pytest dentro do contêiner sem rede, com projeto montado como somente leitura e limites de recursos. A execução tem limite de 120 segundos, tenta encerrar o contêiner ao exceder esse prazo e mantém no máximo 12 KB da saída de testes em memória. A imagem inclui pytest, mas não instala dependências específicas de cada projeto.
 
 O agente usa Ollama local em `http://127.0.0.1:11434` e o modelo `qwen2.5-coder:3b` por padrão. Instale o Ollama e execute `ollama pull qwen2.5-coder:3b`. Configure `DEVPILOT_OLLAMA_URL` e `DEVPILOT_OLLAMA_MODEL` para personalizar. Sem Ollama, a função de planejamento retorna indisponibilidade; não há API paga obrigatória.
 
