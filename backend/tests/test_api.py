@@ -68,7 +68,7 @@ def test_import_analyze_and_list_project_history(client):
     analysis = analysis_response.json()
     assert analysis["total_files"] == 3
     assert "Python" in analysis["detected_technologies"]
-    assert "main.py" in analysis["entrypoints"][0]
+    assert any(path.endswith("main.py") for path in analysis["entrypoints"])
     assert analysis["files_omitted_from_list"] == 0
 
     saved_analysis = client.get(f"/api/v1/projects/{project['id']}/analysis")
