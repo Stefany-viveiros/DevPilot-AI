@@ -2,7 +2,7 @@ from pathlib import Path
 from app.services.project_analysis import analyze_project
 
 def rescue_project(root: Path) -> dict:
-    analysis = analyze_project(root)
+    analysis = analyze_project(root, max_listed_files=2500)
     files = set(analysis["files"])
     findings = []
     def add(severity, title, detail, recommendation):
