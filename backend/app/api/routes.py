@@ -141,7 +141,7 @@ def create_project(payload: ProjectCreate, db: Session = Depends(get_db)) -> Pro
         existing = len(db.scalars(select(Project.id).where(Project.user_id == user_id)).all())
         if existing >= limit:
             raise HTTPException(status_code=429, detail=f"Limite do plano {user.plan}: {limit} projetos.")
-    project = Project(user_id=user_id, name=payload.name.strip(), description=payload.description, root_path=payload.root_path)
+    project = Project(user_id=user_id, name=payload.name.strip(), description=payload.description, root_path=None)
     db.add(project)
     db.flush()
     record_event(db, project.id, "project_created", "Projeto cadastrado.")
@@ -175,6 +175,7 @@ async def import_project(
         limit = 3 if user.plan == "free" else 25
         existing = len(db.scalars(select(Project.id).where(Project.user_id == user_id)).all())
         if existing >= limit:
+            shutil.rmtree(WORKSPACE_DIR / result.storage_path, ignore_errors=True)
             raise HTTPException(status_code=429, detail=f"Limite do plano {user.plan}: {limit} projetos.")
     project = Project(
         name=name.strip(),
