@@ -46,3 +46,10 @@ A inicialização aplica uma migração aditiva pequena para bancos SQLite já c
 2. Planejador que transforma solicitações em planos revisáveis.
 3. Executor de ferramentas com checkpoints, limites de tempo e aprovação humana.
 4. Validação baseada em testes e evidências persistidas.
+
+
+## Planejamento com IA local (Fase 3)
+
+O planejador envia ao Ollama local uma solicitação e um contexto textual limitado (até 80 KB), excluindo diretórios comuns de dependências/controle de versão e arquivos com nomes indicativos de credenciais. O resultado é validado como plano estruturado e persistido como tarefa pendente. A pessoa usuária pode aprovar ou rejeitar no painel.
+
+A aprovação permite apenas escrita de arquivos dentro da raiz do projeto, com bloqueio de traversal, caminhos absolutos, symlinks, pastas protegidas e nomes sensíveis. O limite é de 20 arquivos e 200 KB por arquivo. Não há execução de shell, instalação de pacotes ou testes automáticos nesta fase. A validação de caminhos é defesa em profundidade, não substitui isolamento de sistema operacional contra processos locais concorrentes.
