@@ -1,4 +1,5 @@
 import json
+from difflib import unified_diff
 import re
 import shutil
 import zipfile
@@ -26,7 +27,7 @@ from app.services.auth import hash_password, verify_password, issue_token, read_
 from app.services.auth_rate_limit import (
     clear_login_failures, is_login_blocked, login_bucket_key, record_failed_login,
 )
-from app.services.agent import AgentProviderError, create_plan, apply_plan, create_checkpoint, restore_checkpoint
+from app.services.agent import AgentProviderError, create_plan, apply_plan, create_checkpoint, restore_checkpoint, validate_path
 from app.services.rescue import rescue_project
 from app.services.sandbox import SandboxUnavailable, run_python_tests
 from app.schemas.project import (
@@ -347,6 +348,42 @@ def list_agent_tasks(project_id: int, db: Session = Depends(get_db)) -> list[Age
     get_existing_project(project_id, db)
     return list(db.scalars(select(AgentTask).where(AgentTask.project_id == project_id)
                            .order_by(AgentTask.created_at.desc())).all())
+
+@router.get("/tasks/{task_id}/diff", tags=["Agente", "Revisão"])
+def preview_agent_task_diff(task_id: int, db: Session = Depends(get_db)):
+    task = db.get(AgentTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+    if task.status != "awaiting_approval":
+        raise HTTPException(status_code=409, detail="A comparação só está disponível antes da aprovação.")
+    project = get_existing_project(task.project_id, db)
+    root = get_project_directory(project)
+    try:
+        plan = AgentPlan.model_validate_json(task.plan_json)
+        files = []
+        for change in plan.proposed_changes:
+            relative = change["path"]
+            target = validate_path(root, relative)
+            new_content = change["content"]
+            if len(new_content.encode("utf-8")) > 200_000:
+                raise ValueError("Arquivo proposto excede o limite de 200 KB para comparação.")
+            exists = target.exists()
+            if exists:
+                if not target.is_file() or target.stat().st_size > 200_000:
+                    raise ValueError("Arquivo atual não pode ser comparado com segurança.")
+                old_content = target.read_text(encoding="utf-8")
+            else:
+                old_content = ""
+            diff = "\n".join(unified_diff(
+                old_content.splitlines(), new_content.splitlines(),
+                fromfile=f"a/{relative}" if exists else "/dev/null",
+                tofile=f"b/{relative}", lineterm="",
+            ))
+            files.append({"path": relative, "is_new": not exists, "diff": diff})
+    except (ValueError, OSError, UnicodeDecodeError) as exc:
+        raise HTTPException(status_code=422, detail=f"Não foi possível comparar os arquivos: {exc}") from exc
+    return {"task_id": task.id, "files": files}
+
 
 @router.post("/tasks/{task_id}/approve", response_model=TaskRead, tags=["Agente"])
 def approve_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask:
