@@ -99,7 +99,7 @@ Limites atuais: ZIP de até 20 MB, até 2.000 itens, 100 MB descompactados e 10 
 - `POST /api/v1/projects/{id}/validate`
 - `POST /api/v1/projects/{id}/repair` — testa e, em caso de falha, prepara uma proposta de correção pendente de aprovação
 - `GET /api/v1/projects/{id}/runs`
-- `POST /api/v1/auth/register` / `POST /api/v1/auth/login` (modo autenticado)
+- `POST /api/v1/auth/register` / `POST /api/v1/auth/login` / `GET /api/v1/auth/me` (modo autenticado; consulta plano e consumo de cotas)
 - `POST /api/v1/projects/{id}/tasks` — gera plano com IA local
 - `GET /api/v1/projects/{id}/tasks`
 - `POST /api/v1/tasks/{task_id}/approve` — aplica alterações após aprovação
@@ -120,7 +120,7 @@ pytest -q
 - Diretórios comuns de dependências, ambientes virtuais e metadados de controle de versão são ignorados.
 - Arquivos com nomes e extensões sensíveis comuns são ignorados, mas isso não substitui uma ferramenta dedicada de detecção de segredos.
 - A análise percorre apenas a pasta de workspace associada ao projeto.
-- O modo local mantém autenticação desativada por padrão. Para habilitar contas, configure DEVPILOT_AUTH_REQUIRED=true e DEVPILOT_AUTH_SECRET com pelo menos 32 caracteres aleatórios. As rotas da API passam a exigir Authorization: Bearer token; os projetos ficam isolados por conta. O plano gratuito tem limites iniciais de 3 projetos e 10 tarefas de IA por dia.
+- O modo local mantém autenticação desativada por padrão. Para habilitar contas, configure DEVPILOT_AUTH_REQUIRED=true e DEVPILOT_AUTH_SECRET com pelo menos 32 caracteres aleatórios. As rotas da API passam a exigir Authorization: Bearer token; os projetos ficam isolados por conta. O plano gratuito tem limites iniciais de 3 projetos e 10 tarefas de IA por janela de 24 horas. O painel autenticado mostra o consumo atual e os limites da conta.
 - A validação em Docker executa somente pytest com rede desativada; não instala dependências do projeto. A segurança depende de Docker e host atualizados. Não exponha o daemon Docker.
 - O Modo Resgate é estático e sua pontuação é indicativa, não uma avaliação de qualidade comprovada.
 - A autenticação é uma base inicial: ainda faltam verificação de e-mail, recuperação de senha, rate limiting distribuído, sessões revogáveis, cobrança, portal de assinatura, monitoramento e hardening antes de produção. Não exponha a aplicação à internet ainda.
