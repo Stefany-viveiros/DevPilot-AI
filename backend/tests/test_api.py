@@ -177,3 +177,12 @@ def test_sandbox_validation_is_logged(client, monkeypatch):
     assert result.status_code == 200
     runs = client.get(f"/api/v1/projects/{project_id}/runs").json()
     assert any(run["run_type"] == "pytest" and run["status"] == "passed" for run in runs)
+
+
+def test_project_storage_path_cannot_be_supplied_or_changed(client):
+    created = client.post("/api/v1/projects", json={"name":"Caminho protegido","root_path":"../fora"})
+    assert created.status_code == 422
+    valid = client.post("/api/v1/projects", json={"name":"Caminho interno"})
+    project_id = valid.json()["id"]
+    changed = client.patch(f"/api/v1/projects/{project_id}", json={"root_path":"../outro"})
+    assert changed.status_code == 422
