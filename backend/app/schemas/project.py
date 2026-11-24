@@ -2,9 +2,9 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 class ProjectCreate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
-    root_path: str | None = Field(default=None, max_length=500)
 
     @field_validator("name")
     @classmethod
@@ -14,9 +14,9 @@ class ProjectCreate(BaseModel):
         return value
 
 class ProjectUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str | None = Field(default=None, min_length=1, max_length=120)
     description: str | None = Field(default=None, max_length=2000)
-    root_path: str | None = Field(default=None, max_length=500)
 
     @field_validator("name")
     @classmethod
