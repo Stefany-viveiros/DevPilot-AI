@@ -402,3 +402,69 @@ def test_import_quota_removes_extracted_files_when_limit_is_reached(client, monk
                           files={"archive": ("excedente.zip", archive, "application/zip")})
     assert blocked.status_code == 429
     assert len(list(routes.WORKSPACE_DIR.iterdir())) == 3
+
+
+
+def test_approved_agent_task_can_be_restored_through_api(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+
+    archive = make_zip({"src/main.py": "value = 1\n"})
+    imported = client.post("/api/v1/projects/import", data={"name": "Restaurar tarefa"},
+                           files={"archive": ("restaurar.zip", archive, "application/zip")})
+    assert imported.status_code == 201
+    project = imported.json()
+    root = routes.WORKSPACE_DIR / project["root_path"]
+    target = root / "src" / "main.py"
+
+    monkeypatch.setattr(routes, "create_plan", lambda *args: AgentPlan(
+        summary="Atualizar valor", steps=[],
+        proposed_changes=[
+            {"path": "src/main.py", "content": "value = 2\n", "reason": "Teste"},
+            {"path": "src/novo.py", "content": "novo = True\n", "reason": "Teste"},
+        ], risks=[]
+    ))
+    planned = client.post(f"/api/v1/projects/{project['id']}/tasks",
+                          json={"instruction": "Atualize o módulo e crie um arquivo"})
+    assert planned.status_code == 201
+    task_id = planned.json()["id"]
+    applied = client.post(f"/api/v1/tasks/{task_id}/approve")
+    assert applied.status_code == 200
+    assert target.read_text(encoding="utf-8") == "value = 2\n"
+    assert (root / "src" / "novo.py").is_file()
+
+    restored = client.post(f"/api/v1/tasks/{task_id}/restore")
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["status"] == "restored"
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
+    assert not (root / "src" / "novo.py").exists()
+    runs = client.get(f"/api/v1/projects/{project['id']}/runs").json()
+    assert any(run["run_type"] == "restore" and run["status"] == "completed" for run in runs)
+
+
+def test_restore_endpoint_rejects_pending_task_and_corrupt_checkpoint(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+
+    archive = make_zip({"main.py": "value = 1\n"})
+    imported = client.post("/api/v1/projects/import", data={"name": "Checkpoint inválido"},
+                           files={"archive": ("invalido.zip", archive, "application/zip")})
+    project = imported.json()
+    monkeypatch.setattr(routes, "create_plan", lambda *args: AgentPlan(
+        summary="Plano", steps=[], proposed_changes=[
+            {"path": "main.py", "content": "value = 2\n", "reason": "Teste"}
+        ], risks=[]
+    ))
+    planned = client.post(f"/api/v1/projects/{project['id']}/tasks",
+                          json={"instruction": "Atualize o arquivo principal"})
+    task_id = planned.json()["id"]
+    pending = client.post(f"/api/v1/tasks/{task_id}/restore")
+    assert pending.status_code == 409
+
+    applied = client.post(f"/api/v1/tasks/{task_id}/approve")
+    assert applied.status_code == 200
+    checkpoint = routes.WORKSPACE_DIR / ".devpilot_checkpoints" / str(project["id"]) / f"task-{task_id}.zip"
+    checkpoint.write_text("arquivo ZIP corrompido", encoding="utf-8")
+    corrupt = client.post(f"/api/v1/tasks/{task_id}/restore")
+    assert corrupt.status_code == 422
+    assert "Não foi possível restaurar" in corrupt.json()["detail"]
