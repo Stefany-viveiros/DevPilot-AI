@@ -8,7 +8,7 @@ from app.core.config import APP_NAME, APP_VERSION, DEFAULT_DATABASE_PATH
 from app.db.base import Base
 from app.db.migrations import upgrade_sqlite_schema
 from app.db.session import engine
-from app.models import Project, ProjectEvent, AgentTask, AgentApproval, ProjectMemory, AgentRun  # noqa: F401
+from app.models import Project, ProjectEvent, AgentTask, AgentApproval, ProjectMemory, AgentRun, User  # noqa: F401
 
 FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
 
