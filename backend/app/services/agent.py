@@ -140,6 +140,72 @@ def create_checkpoint(root: Path, plan: AgentPlan, destination: Path) -> dict:
     return {"file": destination.name, "files": len(entries), "backed_up_files": sum(x["existed"] for x in entries), "bytes": total}
 
 
+def restore_checkpoint(root: Path, checkpoint: Path) -> list[str]:
+    """Restaura os arquivos listados em um checkpoint, com rollback em caso de erro."""
+    import zipfile
+
+    with zipfile.ZipFile(checkpoint, "r") as archive:
+        names = set(archive.namelist())
+        if "manifest.json" not in names or len(names) > 21:
+            raise ValueError("Checkpoint inválido.")
+        manifest = json.loads(archive.read("manifest.json"))
+        entries = manifest.get("files", [])
+        if not isinstance(entries, list) or len(entries) > 20:
+            raise ValueError("Manifesto do checkpoint inválido.")
+        targets = []
+        for entry in entries:
+            relative = entry.get("path")
+            target = validate_path(root, relative)
+            existed = entry.get("existed")
+            if not isinstance(existed, bool):
+                raise ValueError("Manifesto do checkpoint inválido.")
+            member = "files/" + relative.replace("\\\\", "/")
+            if existed:
+                if member not in names:
+                    raise ValueError("Arquivo ausente no checkpoint.")
+                content = archive.read(member)
+                if len(content) > MAX_BACKUP_FILE_BYTES:
+                    raise ValueError("Arquivo de checkpoint excede o limite seguro.")
+            else:
+                if member in names:
+                    raise ValueError("Checkpoint inconsistente.")
+                content = None
+            targets.append((target, relative, content))
+        expected = {"manifest.json"} | {"files/" + entry["path"].replace("\\\\", "/") for entry in entries if entry["existed"]}
+        if names != expected:
+            raise ValueError("Checkpoint contém entradas inesperadas.")
+
+    previous = {}
+    for target, _, _ in targets:
+        validate_path(root, target.relative_to(root).as_posix())
+        if target.exists():
+            if not target.is_file() or target.stat().st_size > MAX_BACKUP_FILE_BYTES:
+                raise ValueError("Arquivo atual não pode ser restaurado com segurança.")
+            previous[target] = target.read_bytes()
+        else:
+            previous[target] = None
+    restored = []
+    try:
+        for target, relative, content in targets:
+            validate_path(root, relative)
+            if content is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _atomic_write(target, content)
+            restored.append(relative)
+    except Exception:
+        for target in reversed([item[0] for item in targets if item[0] in previous]):
+            old = previous[target]
+            if old is None:
+                target.unlink(missing_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                _atomic_write(target, old)
+        raise
+    return restored
+
+
 def apply_plan(root: Path, plan: AgentPlan) -> list[str]:
     if not plan.proposed_changes:
         raise ValueError("O plano não contém alterações aplicáveis.")
