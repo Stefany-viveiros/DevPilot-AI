@@ -468,3 +468,46 @@ def test_restore_endpoint_rejects_pending_task_and_corrupt_checkpoint(client, mo
     corrupt = client.post(f"/api/v1/tasks/{task_id}/restore")
     assert corrupt.status_code == 422
     assert "Não foi possível restaurar" in corrupt.json()["detail"]
+
+
+
+def test_restore_checkpoint_respects_project_account_ownership(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    monkeypatch.setenv("DEVPILOT_AUTH_SECRET", "t" * 48)
+    first = client.post("/api/v1/auth/register", json={
+        "email": "dona@example.com", "password": "senha-super-segura-123"
+    })
+    second = client.post("/api/v1/auth/register", json={
+        "email": "outra@example.com", "password": "senha-super-segura-456"
+    })
+    headers_a = {"Authorization": f"Bearer {first.json()['access_token']}"}
+    headers_b = {"Authorization": f"Bearer {second.json()['access_token']}"}
+
+    archive = make_zip({"main.py": "value = 1\n"})
+    imported = client.post("/api/v1/projects/import", headers=headers_a,
+                           data={"name": "Projeto privado"},
+                           files={"archive": ("privado.zip", archive, "application/zip")})
+    project = imported.json()
+    target = routes.WORKSPACE_DIR / project["root_path"] / "main.py"
+    monkeypatch.setattr(routes, "create_plan", lambda *args: AgentPlan(
+        summary="Alterar valor", steps=[], proposed_changes=[
+            {"path": "main.py", "content": "value = 2\n", "reason": "Teste"}
+        ], risks=[]
+    ))
+    planned = client.post(f"/api/v1/projects/{project['id']}/tasks", headers=headers_a,
+                          json={"instruction": "Atualize o valor do módulo"})
+    task_id = planned.json()["id"]
+    applied = client.post(f"/api/v1/tasks/{task_id}/approve", headers=headers_a)
+    assert applied.status_code == 200
+    assert target.read_text(encoding="utf-8") == "value = 2\n"
+
+    denied = client.post(f"/api/v1/tasks/{task_id}/restore", headers=headers_b)
+    assert denied.status_code == 404
+    assert target.read_text(encoding="utf-8") == "value = 2\n"
+
+    restored = client.post(f"/api/v1/tasks/{task_id}/restore", headers=headers_a)
+    assert restored.status_code == 200
+    assert target.read_text(encoding="utf-8") == "value = 1\n"
