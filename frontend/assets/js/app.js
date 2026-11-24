@@ -128,13 +128,16 @@ function renderProjects(projects) {
           let plan = {};
           try { plan = JSON.parse(task.plan_json || "{}"); } catch { plan = {}; }
           const changes = Array.isArray(plan.proposed_changes) ? plan.proposed_changes : [];
+          let result = {};
+          try { result = JSON.parse(task.result_json || "{}"); } catch { result = {}; }
+          const filesWritten = Array.isArray(result.files_written) ? result.files_written : [];
           const status = statusLabels[task.status] || task.status;
           const controls = task.status === "applied"
             ? `<button class="small-button restore-task" data-task-id="${task.id}">Restaurar versão anterior</button>`
             : task.status === "awaiting_approval"
               ? `<button class="small-button approve-task" data-task-id="${task.id}">Aprovar e aplicar</button><button class="small-button reject-task" data-task-id="${task.id}">Rejeitar</button>`
               : "";
-          return `<article class="task-item"><div class="task-heading"><b>#${task.id} · ${escapeHtml(status)}</b><small>${escapeHtml(new Date(task.created_at).toLocaleString("pt-BR"))}</small></div><p>${escapeHtml(task.instruction)}</p><p>${escapeHtml(plan.summary || "Plano indisponível")}</p><small>${changes.length} arquivo(s) no plano</small><div class="task-controls">${controls}</div></article>`;
+          return `<article class="task-item"><div class="task-heading"><b>#${task.id} · ${escapeHtml(status)}</b><small>${escapeHtml(new Date(task.created_at).toLocaleString("pt-BR"))}</small></div><p>${escapeHtml(task.instruction)}</p><p>${escapeHtml(plan.summary || "Plano indisponível")}</p><small>${changes.length} arquivo(s) no plano</small>${filesWritten.length ? `<details><summary>Arquivos aplicados (${filesWritten.length})</summary><ul>${filesWritten.map(path => `<li>${escapeHtml(path)}</li>`).join("")}</ul></details>` : ""}<div class="task-controls">${controls}</div></article>`;
         }).join("") : "<p>Nenhuma tarefa criada para este projeto.</p>"}<p class="task-feedback" role="status"></p><p class="agent-warning">Restaurar substitui os arquivos alterados pela cópia de segurança anterior à tarefa. Faça isso somente se tiver certeza.</p>`;
         const feedback = panel.querySelector(".task-feedback");
         panel.querySelectorAll(".approve-task").forEach((action) => action.addEventListener("click", async () => {
