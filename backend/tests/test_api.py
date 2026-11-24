@@ -186,3 +186,24 @@ def test_project_storage_path_cannot_be_supplied_or_changed(client):
     project_id = valid.json()["id"]
     changed = client.patch(f"/api/v1/projects/{project_id}", json={"root_path":"../outro"})
     assert changed.status_code == 422
+
+
+def test_failed_tests_create_repair_plan_for_approval(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+    archive = make_zip({"main.py":"def run(): return 1"})
+    imported = client.post("/api/v1/projects/import", data={"name":"Projeto com falha"},
+                           files={"archive":("falha.zip",archive,"application/zip")})
+    project_id = imported.json()["id"]
+    monkeypatch.setattr(routes, "run_python_tests", lambda root: {
+        "status":"failed", "exit_code":1, "output":"AssertionError: esperado 2, recebido 1", "sandbox":"fake para teste"
+    })
+    monkeypatch.setattr(routes, "create_plan", lambda root, instruction, memory: AgentPlan(
+        summary="Corrigir retorno", steps=[{"title":"Ajustar função","description":"Corrigir valor"}],
+        proposed_changes=[{"path":"main.py","content":"def run(): return 2","reason":"Corrige teste"}], risks=[]
+    ))
+    response = client.post(f"/api/v1/projects/{project_id}/repair")
+    assert response.status_code == 200
+    assert response.json()["validation"]["status"] == "failed"
+    assert response.json()["task"]["status"] == "awaiting_approval"
+    assert response.json()["task"]["plan"]["proposed_changes"][0]["path"] == "main.py"
