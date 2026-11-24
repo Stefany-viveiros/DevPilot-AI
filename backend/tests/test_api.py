@@ -290,3 +290,23 @@ def test_rejected_agent_plan_does_not_change_project_files(client, monkeypatch):
     assert rejected.status_code == 200
     assert rejected.json()["status"] == "rejected"
     assert target.read_text(encoding="utf-8") == "value = 1\n"
+
+
+def test_timeout_does_not_trigger_automatic_repair_proposal(client, monkeypatch):
+    import app.api.routes as routes
+    archive = make_zip({"main.py": "print('ok')"})
+    imported = client.post("/api/v1/projects/import", data={"name": "Teste expirado"},
+                           files={"archive": ("timeout.zip", archive, "application/zip")})
+    project_id = imported.json()["id"]
+    monkeypatch.setattr(routes, "run_python_tests", lambda root: {
+        "status": "timeout", "exit_code": None, "output": "Tempo limite excedido",
+        "sandbox": "sandbox de teste"
+    })
+    monkeypatch.setattr(routes, "create_plan", lambda *args: (_ for _ in ()).throw(
+        AssertionError("A IA não deve propor reparos para timeout")
+    ))
+    response = client.post(f"/api/v1/projects/{project_id}/repair")
+    assert response.status_code == 200
+    assert response.json()["validation"]["status"] == "timeout"
+    assert response.json()["task"] is None
+    assert "não produziu uma falha" in response.json()["planning_error"]
