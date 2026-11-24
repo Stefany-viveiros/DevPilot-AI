@@ -11,15 +11,19 @@ permissions:
 
 jobs:
   testes:
-    name: Testes do backend
+    name: Testes do backend (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
     steps:
       - name: Baixar o código
         uses: actions/checkout@v4
       - name: Configurar Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          python-version: ${{ matrix.python-version }}
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - name: Instalar dependências
