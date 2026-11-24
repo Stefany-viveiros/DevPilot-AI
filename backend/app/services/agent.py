@@ -93,10 +93,10 @@ def _atomic_write(target: Path, content: bytes) -> None:
     temporary = Path(temporary_name)
     try:
         mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else 0o644
-        os.chmod(temporary, mode)
         with os.fdopen(descriptor, "wb") as stream:
             stream.write(content)
             stream.flush()
+        os.chmod(temporary, mode)
         os.replace(temporary, target)
     finally:
         temporary.unlink(missing_ok=True)
