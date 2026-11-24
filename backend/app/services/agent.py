@@ -1,5 +1,6 @@
 import json
 import os
+import tempfile
 import urllib.error
 import urllib.request
 from pathlib import Path, PurePosixPath
@@ -86,6 +87,18 @@ MEMÓRIA TÉCNICA DO PROJETO:\n{memory_context[:12000]}\nCONTEXTO:{_context(root
             raise AgentProviderError(f"O modelo propôs um caminho bloqueado: {exc}") from exc
     return plan
 
+def _atomic_write(target: Path, content: bytes) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(prefix=f".{target.name}.devpilot-", dir=target.parent)
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(content)
+            stream.flush()
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
 def apply_plan(root: Path, plan: AgentPlan) -> list[str]:
     if not plan.proposed_changes:
         raise ValueError("O plano não contém alterações aplicáveis.")
@@ -97,16 +110,18 @@ def apply_plan(root: Path, plan: AgentPlan) -> list[str]:
     try:
         for target, item in targets:
             target.parent.mkdir(parents=True, exist_ok=True)
+            validate_path(root, item["path"])
             if target.exists() and target.stat().st_size > MAX_BACKUP_FILE_BYTES:
                 raise ValueError("O arquivo existente excede o limite seguro de 10 MB para backup.")
             backups[target] = target.read_bytes() if target.exists() else None
-            temp = target.with_name(target.name + ".devpilot-tmp")
-            temp.write_text(item["content"], encoding="utf-8")
-            temp.replace(target); written.append(target)
+            _atomic_write(target, item["content"].encode("utf-8"))
+            written.append(target)
     except Exception:
         for target in reversed(written):
             old = backups[target]
-            if old is None: target.unlink(missing_ok=True)
-            else: target.write_bytes(old)
+            if old is None:
+                target.unlink(missing_ok=True)
+            else:
+                _atomic_write(target, old)
         raise
     return [p.relative_to(root).as_posix() for p, _ in targets]
