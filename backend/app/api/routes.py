@@ -25,7 +25,7 @@ from app.services.auth import hash_password, verify_password, issue_token, read_
 from app.services.auth_rate_limit import (
     clear_login_failures, is_login_blocked, login_bucket_key, record_failed_login,
 )
-from app.services.agent import AgentProviderError, create_plan, apply_plan
+from app.services.agent import AgentProviderError, create_plan, apply_plan, create_checkpoint
 from app.services.rescue import rescue_project
 from app.services.sandbox import SandboxUnavailable, run_python_tests
 from app.schemas.project import (
@@ -358,13 +358,15 @@ def approve_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask
     root = get_project_directory(project)
     try:
         plan = AgentPlan.model_validate_json(task.plan_json)
+        checkpoint_path = WORKSPACE_DIR / ".devpilot_checkpoints" / str(project.id) / f"task-{task.id}.zip"
+        checkpoint = create_checkpoint(root, plan, checkpoint_path)
         written = apply_plan(root, plan)
     except (ValueError, OSError) as exc:
         raise HTTPException(status_code=422, detail=f"Alterações não aplicadas: {exc}") from exc
     task.status = "applied"
-    task.result_json = json.dumps({"files_written": written}, ensure_ascii=False)
+    task.result_json = json.dumps({"files_written": written, "checkpoint": checkpoint}, ensure_ascii=False)
     db.add(AgentApproval(task_id=task.id, decision="approved"))
-    db.add(AgentRun(project_id=project.id, task_id=task.id, run_type="apply", status="completed", summary="Alterações aprovadas e gravadas.", details_json=json.dumps({"files_written": written}, ensure_ascii=False)))
+    db.add(AgentRun(project_id=project.id, task_id=task.id, run_type="apply", status="completed", summary="Alterações aprovadas e gravadas; checkpoint anterior preservado.", details_json=json.dumps({"files_written": written, "checkpoint": checkpoint}, ensure_ascii=False)))
     change_memory = db.scalar(select(ProjectMemory).where(ProjectMemory.project_id == project.id, ProjectMemory.memory_key == "last_agent_changes"))
     change_summary = json.dumps({"task_id": task.id, "instruction": task.instruction, "files_written": written}, ensure_ascii=False)
     if change_memory is None:
