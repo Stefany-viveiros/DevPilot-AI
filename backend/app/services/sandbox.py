@@ -1,5 +1,7 @@
+import os
 import shutil
 import subprocess
+import tempfile
 from collections import deque
 from pathlib import Path
 from threading import Thread
@@ -41,8 +43,12 @@ def run_python_tests(project_root: Path) -> dict:
         raise SandboxUnavailable("Docker não foi encontrado. Instale e inicie o Docker Desktop para validar projetos em sandbox.")
     if not project_root.is_dir() or project_root.is_symlink():
         raise SandboxUnavailable("A pasta do projeto não é válida para execução isolada.")
+    cid_file = tempfile.NamedTemporaryFile(prefix="devpilot-", suffix=".cid", delete=False)
+    cid_path = cid_file.name
+    cid_file.close()
+    os.unlink(cid_path)
     command = [
-        docker, "run", "--rm", "--network", "none", "--read-only",
+        docker, "run", "--cidfile", cid_path, "--rm", "--network", "none", "--read-only",
         "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "--pids-limit", "64", "--memory", "512m", "--cpus", "1",
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
@@ -53,6 +59,7 @@ def run_python_tests(project_root: Path) -> dict:
     try:
         process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except OSError as exc:
+        Path(cid_path).unlink(missing_ok=True)
         raise SandboxUnavailable("Não foi possível iniciar o Docker.") from exc
 
     output: dict[str, str] = {}
@@ -65,10 +72,27 @@ def run_python_tests(project_root: Path) -> dict:
         timed_out = True
         process.kill()
         return_code = process.wait()
+        try:
+            container_id = Path(cid_path).read_text(encoding="ascii").strip()
+            if container_id and all(char in "0123456789abcdef" for char in container_id.lower()):
+                stopped = subprocess.run(
+                    [docker, "stop", "--time", "2", container_id],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    timeout=5, check=False,
+                )
+                if stopped.returncode != 0:
+                    subprocess.run(
+                        [docker, "rm", "-f", container_id],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        timeout=5, check=False,
+                    )
+        except (OSError, subprocess.SubprocessError, UnicodeDecodeError):
+            pass
     finally:
         reader.join(timeout=5)
         if process.stdout:
             process.stdout.close()
+        Path(cid_path).unlink(missing_ok=True)
 
     captured = output.get("text", "")[-MAX_OUTPUT:]
     sandbox_description = "Docker sem rede, raiz somente leitura, sem capabilities e com limites de CPU/memória/processos; saída limitada a 12 KB."
