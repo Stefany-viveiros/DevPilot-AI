@@ -171,7 +171,8 @@ def create_agent_task(project_id: int, payload: TaskCreate, db: Session = Depend
     project = get_existing_project(project_id, db)
     root = get_project_directory(project)
     try:
-        memories = db.scalars(select(ProjectMemory).where(ProjectMemory.project_id == project.id)).all()\n        memory_context = "\\n".join(f"{item.memory_key}: {item.content}" for item in memories)
+        memories = db.scalars(select(ProjectMemory).where(ProjectMemory.project_id == project.id)).all()
+        memory_context = "\n".join(f"{item.memory_key}: {item.content}" for item in memories)
         plan = create_plan(root, payload.instruction.strip(), memory_context)
     except AgentProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
