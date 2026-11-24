@@ -29,3 +29,35 @@ def test_empty_plan_cannot_be_applied(tmp_path):
 def test_rejects_sensitive_paths(tmp_path, path):
     with pytest.raises(ValueError):
         validate_path(tmp_path, path)
+
+
+def test_apply_refuses_to_backup_oversized_existing_file(tmp_path):
+    target = tmp_path / "large.py"
+    target.write_bytes(b"x" * (10 * 1024 * 1024 + 1))
+    plan = AgentPlan.model_validate({
+        "summary": "Alterar arquivo grande", "steps": [],
+        "proposed_changes": [{"path": "large.py", "content": "novo", "reason": "teste"}],
+        "risks": [],
+    })
+    with pytest.raises(ValueError, match="10 MB"):
+        apply_plan(tmp_path, plan)
+    assert target.stat().st_size == 10 * 1024 * 1024 + 1
+
+
+def test_rejects_oversized_model_response(tmp_path, monkeypatch):
+    from unittest.mock import patch
+    from app.services.agent import AgentProviderError, MAX_PLAN_RESPONSE_BYTES, create_plan
+
+    class LargeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def read(self, size):
+            return b"x" * size
+
+    with patch("app.services.agent.urllib.request.urlopen", return_value=LargeResponse()):
+        with pytest.raises(AgentProviderError, match="1 MB"):
+            create_plan(tmp_path, "Analise o projeto e proponha melhorias")
