@@ -37,15 +37,25 @@ def test_sandbox_invocation_is_restricted(tmp_path):
     assert result["output"] == "2 passed"
 
 
-def test_sandbox_timeout_is_reported(tmp_path):
+def test_sandbox_timeout_is_reported_and_container_is_stopped(tmp_path):
+    from pathlib import Path
     process = FakeProcess(b"still running")
     process.timeout = True
+
+    def start_container(command, **kwargs):
+        cid_path = Path(command[command.index("--cidfile") + 1])
+        cid_path.write_text("a" * 64, encoding="ascii")
+        return process
+
     with patch("app.services.sandbox.shutil.which", return_value="/usr/bin/docker"), patch(
-        "app.services.sandbox.subprocess.Popen", return_value=process
-    ):
+        "app.services.sandbox.subprocess.Popen", side_effect=start_container
+    ), patch("app.services.sandbox.subprocess.run") as cleanup:
+        cleanup.return_value.returncode = 0
         result = run_python_tests(tmp_path)
     assert result["status"] == "timeout"
     assert process.killed
+    assert cleanup.call_args.args[0][:4] == ["/usr/bin/docker", "stop", "--time", "2"]
+    assert cleanup.call_args.args[0][-1] == "a" * 64
 
 
 def test_sandbox_output_is_bounded_to_last_bytes():
