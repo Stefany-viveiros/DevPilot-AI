@@ -114,7 +114,7 @@ def main():
     exit_code = 1 if failures else (0 if executed and not js_incomplete else None)
     output = "\n\n".join(output_parts)
     print(output[-MAX_CAPTURE_BYTES:])
-    print("\\nRESULTADO_JSON=" + __import__("json").dumps({
+    print("\nRESULTADO_JSON=" + __import__("json").dumps({
         "status": status, "checks": results, "javascript_scan_incomplete": js_incomplete
     }, ensure_ascii=False))
     return 0 if status in {"passed", "not_applicable"} else 1
