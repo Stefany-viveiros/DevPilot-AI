@@ -148,13 +148,24 @@ def restore_checkpoint(root: Path, checkpoint: Path) -> list[str]:
         names = set(archive.namelist())
         if "manifest.json" not in names or len(names) > 21:
             raise ValueError("Checkpoint inválido.")
+        manifest_info = archive.getinfo("manifest.json")
+        if manifest_info.file_size > 64 * 1024:
+            raise ValueError("Manifesto do checkpoint excede o limite seguro.")
         manifest = json.loads(archive.read("manifest.json"))
+        if not isinstance(manifest, dict):
+            raise ValueError("Manifesto do checkpoint inválido.")
         entries = manifest.get("files", [])
         if not isinstance(entries, list) or len(entries) > 20:
             raise ValueError("Manifesto do checkpoint inválido.")
         targets = []
+        seen_paths = set()
         for entry in entries:
+            if not isinstance(entry, dict):
+                raise ValueError("Entrada do checkpoint inválida.")
             relative = entry.get("path")
+            if not isinstance(relative, str) or relative in seen_paths:
+                raise ValueError("Caminho duplicado ou inválido no checkpoint.")
+            seen_paths.add(relative)
             target = validate_path(root, relative)
             existed = entry.get("existed")
             if not isinstance(existed, bool):
@@ -163,6 +174,8 @@ def restore_checkpoint(root: Path, checkpoint: Path) -> list[str]:
             if existed:
                 if member not in names:
                     raise ValueError("Arquivo ausente no checkpoint.")
+                if archive.getinfo(member).file_size > MAX_BACKUP_FILE_BYTES:
+                    raise ValueError("Arquivo de checkpoint excede o limite seguro.")
                 content = archive.read(member)
                 if len(content) > MAX_BACKUP_FILE_BYTES:
                     raise ValueError("Arquivo de checkpoint excede o limite seguro.")
