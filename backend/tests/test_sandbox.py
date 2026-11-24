@@ -90,7 +90,7 @@ def test_sandbox_reports_not_applicable_when_no_supported_checks_exist(tmp_path)
         result = run_python_tests(tmp_path)
     assert result["status"] == "not_applicable"
     assert result["exit_code"] == 0
-    assert len(result["checks"]) == 2
+    assert len(result["checks"]) == 3
 
 
 def test_sandbox_rejects_missing_structured_report(tmp_path):
