@@ -37,7 +37,7 @@ else
 fi
 
 if command -v ollama >/dev/null 2>&1; then
-  if ollama list 2>/dev/null | grep -q "qwen2.5-coder:3b"; then
+  if ollama list 2>/dev/null | grep "qwen2.5-coder:3b" >/dev/null; then
     echo "Modelo local qwen2.5-coder:3b encontrado."
   else
     echo "AVISO: Para habilitar o planejamento por IA, execute em outro terminal: ollama pull qwen2.5-coder:3b"
