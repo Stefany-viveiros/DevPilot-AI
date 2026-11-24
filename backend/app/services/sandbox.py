@@ -1,13 +1,39 @@
 import shutil
 import subprocess
+from collections import deque
 from pathlib import Path
+from threading import Thread
 
 SANDBOX_IMAGE = "devpilot-sandbox:py311"
 MAX_OUTPUT = 12000
 TIMEOUT_SECONDS = 120
+READ_CHUNK = 4096
+
 
 class SandboxUnavailable(RuntimeError):
     pass
+
+
+def _read_bounded_output(stream, limit: int = MAX_OUTPUT) -> str:
+    """Drena a saída inteira sem manter mais que 'limit' bytes em memória."""
+    chunks: deque[bytes] = deque()
+    size = 0
+    while True:
+        chunk = stream.read(READ_CHUNK)
+        if not chunk:
+            break
+        chunks.append(chunk)
+        size += len(chunk)
+        while size > limit and chunks:
+            excess = size - limit
+            first = chunks[0]
+            if len(first) <= excess:
+                size -= len(chunks.popleft())
+            else:
+                chunks[0] = first[excess:]
+                size -= excess
+    return b"".join(chunks).decode("utf-8", errors="replace")
+
 
 def run_python_tests(project_root: Path) -> dict:
     docker = shutil.which("docker")
@@ -25,14 +51,33 @@ def run_python_tests(project_root: Path) -> dict:
         "--workdir", "/workspace", SANDBOX_IMAGE, "python", "-m", "pytest", "-p", "no:cacheprovider", "-q",
     ]
     try:
-        completed = subprocess.run(command, capture_output=True, text=True, timeout=TIMEOUT_SECONDS, check=False)
-    except subprocess.TimeoutExpired as exc:
-        return {"status": "timeout", "exit_code": None, "output": "Tempo limite de 120 segundos excedido.", "sandbox": "Docker sem rede, raiz somente leitura e limites de recursos."}
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     except OSError as exc:
         raise SandboxUnavailable("Não foi possível iniciar o Docker.") from exc
-    output = (completed.stdout + "\n" + completed.stderr).strip()
-    if "Unable to find image" in output or "pull access denied" in output:
+
+    output: dict[str, str] = {}
+    reader = Thread(target=lambda: output.setdefault("text", _read_bounded_output(process.stdout)), daemon=True)
+    reader.start()
+    timed_out = False
+    try:
+        return_code = process.wait(timeout=TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        process.kill()
+        return_code = process.wait()
+    finally:
+        reader.join(timeout=5)
+        if process.stdout:
+            process.stdout.close()
+
+    captured = output.get("text", "")[-MAX_OUTPUT:]
+    sandbox_description = "Docker sem rede, raiz somente leitura, sem capabilities e com limites de CPU/memória/processos; saída limitada a 12 KB."
+    if timed_out:
+        return {"status": "timeout", "exit_code": None,
+                "output": (captured + "\nTempo limite de 120 segundos excedido.")[-MAX_OUTPUT:],
+                "sandbox": sandbox_description}
+    if "Unable to find image" in captured or "pull access denied" in captured:
         raise SandboxUnavailable(f"Imagem {SANDBOX_IMAGE} ausente. Construa-a com: docker build -t {SANDBOX_IMAGE} sandbox/")
-    return {"status": "passed" if completed.returncode == 0 else "failed",
-            "exit_code": completed.returncode, "output": output[-MAX_OUTPUT:],
-            "sandbox": "Docker sem rede, raiz somente leitura, sem capabilities e com limites de CPU/memória/processos."}
+    return {"status": "passed" if return_code == 0 else "failed",
+            "exit_code": return_code, "output": captured,
+            "sandbox": sandbox_description}
