@@ -238,9 +238,19 @@ function renderAuthPanel() {
   });
 }
 
+async function loadAccount() {
+  const account = await request("/auth/me");
+  const usage = document.querySelector("#account-usage");
+  if (!usage) return;
+  usage.textContent = `${account.email} · Projetos ${account.projects_used}/${account.projects_limit} · IA hoje ${account.tasks_used_today}/${account.tasks_limit}`;
+  usage.hidden = false;
+}
+
 function logout() {
   authToken = "";
   document.querySelector("#logout").hidden = true;
+  const usage = document.querySelector("#account-usage");
+  if (usage) usage.hidden = true;
   sessionStorage.removeItem("devpilotToken");
   renderAuthPanel();
 }
@@ -258,7 +268,9 @@ function showCardMessage(card, message, isError = false) {
 
 async function loadProjects() {
   try {
-    renderProjects(await request("/projects"));
+    const projects = await request("/projects");
+    renderProjects(projects);
+    if (authToken) await loadAccount();
   } catch (error) {
     if (error.message.includes("Autenticação necessária") || error.message.includes("Token inválido") || error.message.includes("Conta inativa")) { renderAuthPanel(); return; }
     projectList.innerHTML = '<div class="empty-state"><strong>Não foi possível carregar os projetos.</strong><p>Confira se a API está em execução e tente novamente.</p></div>';
