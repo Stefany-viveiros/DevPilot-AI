@@ -44,6 +44,8 @@ def test_real_docker_sandbox_checks_javascript_syntax_without_executing_it(tmp_p
         pytest.skip("Imagem de sandbox ainda não foi construída.")
 
     tmp_path.chmod(0o755)
+    python_source = tmp_path / "module.py"
+    python_source.write_text("raise RuntimeError('Este módulo não deve ser executado')", encoding="utf-8")
     source = tmp_path / "app.js"
     source.write_text("throw new Error('Este código não deve ser executado');", encoding="utf-8")
     valid = run_python_tests(tmp_path)
@@ -51,6 +53,8 @@ def test_real_docker_sandbox_checks_javascript_syntax_without_executing_it(tmp_p
     checks = {item["name"]: item for item in valid["checks"]}
     assert checks["javascript_syntax"]["status"] == "passed"
     assert checks["javascript_syntax"]["files_checked"] == 1
+    assert checks["python_syntax"]["status"] == "passed"
+    assert checks["python_syntax"]["files_checked"] == 1
 
     source.write_text("const = ;", encoding="utf-8")
     invalid = run_python_tests(tmp_path)
@@ -73,3 +77,10 @@ def test_real_docker_sandbox_checks_javascript_syntax_without_executing_it(tmp_p
     invalid_tsx = run_python_tests(tmp_path)
     assert invalid_tsx["status"] == "failed"
     assert "TypeScript/JSX" in invalid_tsx["output"]
+
+    tsx.unlink()
+    broken_python = tmp_path / "broken.py"
+    broken_python.write_text("def função(:", encoding="utf-8")
+    invalid_python = run_python_tests(tmp_path)
+    assert invalid_python["status"] == "failed"
+    assert "Sintaxe Python: broken.py" in invalid_python["output"]
