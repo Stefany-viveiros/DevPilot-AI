@@ -49,13 +49,13 @@ def validate_path(root: Path, raw: str) -> Path:
             raise ValueError("Links simbólicos não são permitidos.")
     return target
 
-def create_plan(root: Path, instruction: str) -> AgentPlan:
+def create_plan(root: Path, instruction: str, memory_context: str = "") -> AgentPlan:
     base = __import__("os").getenv("DEVPILOT_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     model = __import__("os").getenv("DEVPILOT_OLLAMA_MODEL", "qwen2.5-coder:3b")
     prompt = f"""Planeje a solicitação para este projeto. Retorne SOMENTE JSON válido com summary, steps (array de {{"title","description"}}), proposed_changes (array de {{"path","content","reason"}}) e risks (array).
 Cada content deve ser o arquivo completo. Use caminhos relativos, no máximo 20 arquivos e 200KB por conteúdo. Não altere arquivos/pastas sensíveis, .git ou dependências. Se não souber, não proponha alterações e explique o risco.
 SOLICITAÇÃO: {instruction}
-CONTEXTO:{_context(root)}"""
+MEMÓRIA TÉCNICA DO PROJETO:\n{memory_context[:12000]}\nCONTEXTO:{_context(root)}"""
     body = json.dumps({"model": model, "prompt": prompt, "stream": False, "format": "json"}, ensure_ascii=False).encode()
     req = urllib.request.Request(base + "/api/generate", data=body, headers={"Content-Type":"application/json"})
     try:
