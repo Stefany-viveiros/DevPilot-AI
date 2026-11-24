@@ -53,3 +53,20 @@ A inicialização aplica uma migração aditiva pequena para bancos SQLite já c
 O planejador envia ao Ollama local uma solicitação e um contexto textual limitado (até 80 KB), excluindo diretórios comuns de dependências/controle de versão e arquivos com nomes indicativos de credenciais. O resultado é validado como plano estruturado e persistido como tarefa pendente. A pessoa usuária pode aprovar ou rejeitar no painel.
 
 A aprovação permite apenas escrita de arquivos dentro da raiz do projeto, com bloqueio de traversal, caminhos absolutos, symlinks, pastas protegidas e nomes sensíveis. O limite é de 20 arquivos e 200 KB por arquivo. Não há execução de shell, instalação de pacotes ou testes automáticos nesta fase. A validação de caminhos é defesa em profundidade, não substitui isolamento de sistema operacional contra processos locais concorrentes.
+
+
+## Fase 4 — validação em sandbox
+
+A execução de testes Python é delegada ao Docker por uma lista fixa de argumentos: sem shell, sem rede, filesystem raiz somente leitura, projeto montado como somente leitura, remoção de capabilities, no-new-privileges, limites de memória/CPU/processos e timeout de 120 segundos. A imagem devpilot-sandbox:py311 contém pytest. Não há instalação de dependências específicas do projeto nem comandos arbitrários. Docker é requisito para esta operação.
+
+## Fase 5 — memória técnica
+
+ProjectMemory armazena pares chave/conteúdo por projeto. A análise estrutural atualiza automaticamente o perfil de tecnologias, pontos de entrada e contagem de arquivos; notas manuais podem ser adicionadas e são incluídas no contexto do planejador. AgentRun persiste o resumo e os resultados de diagnósticos e validações.
+
+## Fase 6 — Modo Resgate
+
+O diagnóstico estático identifica documentação, testes, manifestos e marcadores TODO/FIXME/NotImplementedError. Produz achados com severidade, recomendações e uma pontuação heurística. Não executa o projeto e não afirma que encontrou todos os defeitos.
+
+## Fase 7 — preparação SaaS inicial
+
+Há cadastro/login, hash PBKDF2-SHA256 com salt, tokens HMAC com expiração, isolamento de projetos por usuário e cotas iniciais por plano. A autenticação é opt-in por configuração para preservar o modo local. O plano gratuito possui cotas locais iniciais. Ainda não há cobrança, verificação de e-mail, recuperação de senha, rate limiting distribuído, revogação de tokens, organizações, observabilidade operacional ou revisão de segurança independente. Portanto, esta base não deve ser considerada pronta para produção pública.
