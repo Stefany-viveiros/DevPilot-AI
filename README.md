@@ -17,7 +17,7 @@ Agente de desenvolvimento de software para analisar, planejar, modificar e valid
 - Dashboard web responsivo.
 - Testes automatizados com pytest e integração contínua no GitHub Actions.
 - Planejamento de tarefas via Ollama local, revisão do plano e aprovação/rejeição.
-- Escrita de arquivos restrita à raiz do projeto e bloqueio de caminhos sensíveis.\n- Checkpoint ZIP automático, armazenado fora da pasta do projeto, antes de cada aplicação aprovada; inclui versões anteriores dos arquivos existentes e registra arquivos novos.
+- Escrita de arquivos restrita à raiz do projeto e bloqueio de caminhos sensíveis.\n- Checkpoint ZIP automático, armazenado fora da pasta do projeto, antes de cada aplicação aprovada; inclui versões anteriores dos arquivos existentes e registra arquivos novos.\n- Restauração explícita de um checkpoint para desfazer uma aplicação aprovada, incluindo remoção dos arquivos que não existiam antes.
 - Memória técnica persistente, incluindo perfil estrutural e notas manuais.
 - Modo Resgate com diagnóstico estático e recomendações priorizadas.
 - Execução de testes Python via Docker com rede desativada, filesystem do projeto somente leitura e limites de recursos.
@@ -105,7 +105,7 @@ Limites atuais: ZIP de até 20 MB, até 2.000 itens, 100 MB descompactados e 10 
 - `POST /api/v1/projects/{id}/tasks` — gera plano com IA local
 - `GET /api/v1/projects/{id}/tasks`
 - `POST /api/v1/tasks/{task_id}/approve` — aplica alterações após aprovação
-- `POST /api/v1/tasks/{task_id}/reject`
+- `POST /api/v1/tasks/{task_id}/restore` — restaura o checkpoint da aplicação e marca a tarefa como restaurada\n- `POST /api/v1/tasks/{task_id}/reject`
 
 ## Testes
 
@@ -127,7 +127,7 @@ pytest -q
 - O Modo Resgate é estático e sua pontuação é indicativa, não uma avaliação de qualidade comprovada.
 - O login possui bloqueio local após 5 tentativas inválidas por combinação de IP e e-mail durante uma janela de 15 minutos. Esse controle reside na memória do processo: reiniciar a aplicação limpa os contadores e múltiplas instâncias não compartilham estado. Antes de produção, substituir por limitação distribuída (por exemplo, Redis), adicionar proteção no proxy e monitoramento. Ainda faltam verificação de e-mail, recuperação de senha, sessões revogáveis, cobrança, portal de assinatura e revisão independente de segurança. Não exponha a aplicação à internet ainda.
 - Projetos criados anteriormente no modo local sem autenticação ficam sem proprietário (`user_id` nulo) e não aparecem automaticamente em contas autenticadas. Antes de habilitar autenticação em uma base já utilizada, faça backup e planeje a adoção desses projetos por uma conta; não exponha a aplicação à internet.
-- Antes de cada aplicação aprovada, o sistema cria um checkpoint ZIP em `workspace/.devpilot_checkpoints/`, fora da pasta do projeto. O checkpoint tem limite de 10 MB por arquivo e 50 MB por conjunto; se não puder ser criado, a aplicação é interrompida. Os arquivos novos são registrados como inexistentes antes da alteração.\n- O checkpoint automático é uma cópia de segurança, não um mecanismo de restauração com um clique; preserve também backups próprios e revise as alterações.\n- A aprovação autoriza escrita dos arquivos propostos, não garante correção do código.
+- Antes de cada aplicação aprovada, o sistema cria um checkpoint ZIP em `workspace/.devpilot_checkpoints/`, fora da pasta do projeto. O checkpoint tem limite de 10 MB por arquivo e 50 MB por conjunto; se não puder ser criado, a aplicação é interrompida. Os arquivos novos são registrados como inexistentes antes da alteração.\n- O checkpoint automático pode ser restaurado pela rota autenticada `POST /api/v1/tasks/{task_id}/restore`; essa ação substitui os arquivos alterados pelas versões anteriores e remove arquivos criados pela tarefa. Use-a apenas quando desejar desfazer aquela aplicação. Preserve também backups próprios.\n- A aprovação autoriza escrita dos arquivos propostos, não garante correção do código.
 
 ## Estrutura
 
