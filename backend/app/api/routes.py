@@ -231,6 +231,13 @@ def analyze_registered_project(project_id: int, db: Session = Depends(get_db)) -
         "total_files": analysis["total_files"],
         "detected_technologies": analysis["detected_technologies"],
     })
+    profile = {"technologies": analysis["detected_technologies"], "entrypoints": analysis["entrypoints"], "total_files": analysis["total_files"]}
+    memory = db.scalar(select(ProjectMemory).where(ProjectMemory.project_id == project.id, ProjectMemory.memory_key == "project_profile"))
+    if memory is None:
+        db.add(ProjectMemory(project_id=project.id, memory_key="project_profile", content=json.dumps(profile, ensure_ascii=False), source="analysis"))
+    else:
+        memory.content = json.dumps(profile, ensure_ascii=False)
+        memory.source = "analysis"
     db.commit()
     return {"project_id": project.id, "project_name": project.name, "analyzed_at": analyzed_at, **analysis}
 
