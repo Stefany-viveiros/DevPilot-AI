@@ -45,18 +45,31 @@ def test_real_docker_sandbox_checks_javascript_syntax_without_executing_it(tmp_p
 
     tmp_path.chmod(0o755)
     source = tmp_path / "app.js"
-    source.write_text(
-        "require('fs').writeFileSync('/workspace/nao-deve-existir.txt', 'executado');",
-        encoding="utf-8",
-    )
+    source.write_text("throw new Error('Este código não deve ser executado');", encoding="utf-8")
     valid = run_python_tests(tmp_path)
     assert valid["status"] == "passed", valid["output"]
     checks = {item["name"]: item for item in valid["checks"]}
     assert checks["javascript_syntax"]["status"] == "passed"
     assert checks["javascript_syntax"]["files_checked"] == 1
-    assert not (tmp_path / "nao-deve-existir.txt").exists()
 
     source.write_text("const = ;", encoding="utf-8")
     invalid = run_python_tests(tmp_path)
     assert invalid["status"] == "failed"
     assert "SyntaxError" in invalid["output"]
+    source.unlink()
+
+    tsx = tmp_path / "component.tsx"
+    tsx.write_text(
+        "type Props = { label: string }; export function Button(props: Props) { return <button>{props.label}</button>; }",
+        encoding="utf-8",
+    )
+    valid_tsx = run_python_tests(tmp_path)
+    assert valid_tsx["status"] == "passed", valid_tsx["output"]
+    ts_checks = {item["name"]: item for item in valid_tsx["checks"]}
+    assert ts_checks["typescript_syntax"]["status"] == "passed"
+    assert ts_checks["typescript_syntax"]["files_checked"] == 1
+
+    tsx.write_text("const value: = 3;", encoding="utf-8")
+    invalid_tsx = run_python_tests(tmp_path)
+    assert invalid_tsx["status"] == "failed"
+    assert "TypeScript/JSX" in invalid_tsx["output"]
