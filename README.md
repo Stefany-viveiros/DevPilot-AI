@@ -2,7 +2,7 @@
 
 Agente de desenvolvimento de software para analisar, planejar, modificar e validar projetos reais com autonomia controlada.
 
-> **Status:** Fase 2 — gerenciamento, importação segura e análise inicial de projetos.
+> **Status:** Fase 3 — planejamento com IA local e alterações mediante aprovação.
 
 ## Funcionalidades disponíveis
 
@@ -16,6 +16,8 @@ Agente de desenvolvimento de software para analisar, planejar, modificar e valid
 - Histórico de eventos por projeto.
 - Dashboard web responsivo.
 - Testes automatizados com pytest e integração contínua no GitHub Actions.
+- Planejamento de tarefas via Ollama local, revisão do plano e aprovação/rejeição.
+- Escrita de arquivos restrita à raiz do projeto e bloqueio de caminhos sensíveis.
 
 **Limite importante:** a análise atual é estática e estrutural. Ela lista arquivos e identifica indícios por nomes/extensões; não instala dependências, não executa scripts e não garante que todas as tecnologias foram detectadas.
 
@@ -59,7 +61,7 @@ Acesse:
 - Saúde da API: http://127.0.0.1:8000/api/v1/health
 - Documentação interativa: http://127.0.0.1:8000/docs
 
-O banco SQLite é criado em `backend/data/devpilot.db`. Os projetos importados ficam em `workspace/`. Ambos são dados locais e não devem ser versionados.
+O agente usa Ollama local em `http://127.0.0.1:11434` e o modelo `qwen2.5-coder:3b` por padrão. Instale o Ollama e execute `ollama pull qwen2.5-coder:3b`. Configure `DEVPILOT_OLLAMA_URL` e `DEVPILOT_OLLAMA_MODEL` para personalizar. Sem Ollama, a função de planejamento retorna indisponibilidade; não há API paga obrigatória.\n\nO banco SQLite é criado em `backend/data/devpilot.db`. Os projetos importados ficam em `workspace/`. Ambos são dados locais e não devem ser versionados.
 
 ## Importar um projeto
 
@@ -82,7 +84,7 @@ Limites atuais: ZIP de até 20 MB, até 2.000 itens, 100 MB descompactados e 10 
 - `PATCH /api/v1/projects/{id}`
 - `POST /api/v1/projects/{id}/analyze`
 - `GET /api/v1/projects/{id}/analysis`
-- `GET /api/v1/projects/{id}/events`
+- `GET /api/v1/projects/{id}/events`\n- `POST /api/v1/projects/{id}/tasks` — gera plano com IA local\n- `GET /api/v1/projects/{id}/tasks`\n- `POST /api/v1/tasks/{task_id}/approve` — aplica alterações após aprovação\n- `POST /api/v1/tasks/{task_id}/reject`
 
 ## Testes
 
@@ -100,7 +102,7 @@ pytest -q
 - Arquivos com nomes e extensões sensíveis comuns são ignorados, mas isso não substitui uma ferramenta dedicada de detecção de segredos.
 - A análise percorre apenas a pasta de workspace associada ao projeto.
 - A aplicação ainda não tem autenticação. Não a exponha à internet ou a uma rede não confiável.
-- Execução em sandbox, autenticação, autorização e auditoria ampliada continuam planejadas para fases futuras.
+- O agente não executa comandos nem instala dependências. A aprovação autoriza escrita dos arquivos propostos, não garante correção do código. Faça backup e revise as alterações. Execução em sandbox, autenticação e autorização continuam planejadas. Mantenha o servidor local e não o exponha à internet.
 
 ## Estrutura
 
