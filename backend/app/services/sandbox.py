@@ -97,7 +97,7 @@ def run_python_tests(project_root: Path) -> dict:
     captured = output.get("text", "")[-MAX_OUTPUT:]
     sandbox_description = (
         "Docker sem rede, raiz e projeto somente leitura, sem capabilities, limites de CPU/memória/processos; "
-        "pytest e node --check; saída limitada a 12 KB."
+        "pytest, node --check e análise sintática TypeScript/JSX; saída limitada a 12 KB."
     )
     if timed_out:
         return {"status": "timeout", "exit_code": None,
