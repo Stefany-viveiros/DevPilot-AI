@@ -506,7 +506,7 @@ def validate_project_in_sandbox(project_id: int, db: Session = Depends(get_db)):
         result = run_python_tests(root)
     except SandboxUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    db.add(AgentRun(project_id=project.id, run_type="pytest", status=result["status"],
+    db.add(AgentRun(project_id=project.id, run_type="project_validation", status=result["status"],
                     summary="Validação automatizada isolada do projeto.",
                     details_json=json.dumps(result, ensure_ascii=False)))
     record_event(db, project.id, "sandbox_validation", "Validação em sandbox concluída.",
@@ -532,7 +532,7 @@ def validate_and_propose_repair(project_id: int, db: Session = Depends(get_db)):
         validation = run_python_tests(root)
     except SandboxUnavailable as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    db.add(AgentRun(project_id=project.id, run_type="pytest", status=validation["status"],
+    db.add(AgentRun(project_id=project.id, run_type="project_validation", status=validation["status"],
                     summary="Validação anterior à proposta de correção.",
                     details_json=json.dumps(validation, ensure_ascii=False)))
     if validation["status"] == "passed":
