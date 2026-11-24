@@ -320,7 +320,7 @@ def create_agent_task(project_id: int, payload: TaskCreate, db: Session = Depend
         plan = create_plan(root, payload.instruction.strip(), memory_context)
     except AgentProviderError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
-    if user_id is not None:
+    if user is not None:
         user.tasks_used_today += 1
     task = AgentTask(project_id=project.id, instruction=payload.instruction.strip(),
                      status="awaiting_approval", plan_json=plan.model_dump_json())
