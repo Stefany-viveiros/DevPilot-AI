@@ -13,8 +13,12 @@ from app.models.event import ProjectEvent
 from app.models.project import Project
 from app.models.agent_task import AgentTask
 from app.models.agent_approval import AgentApproval
-from app.schemas.agent import TaskCreate, TaskRead, AgentPlan
+from app.models.project_memory import ProjectMemory
+from app.models.agent_run import AgentRun
+from app.schemas.agent import TaskCreate, TaskRead, AgentPlan, MemoryWrite, MemoryRead
 from app.services.agent import AgentProviderError, create_plan, apply_plan
+from app.services.rescue import rescue_project
+from app.services.sandbox import SandboxUnavailable, run_python_tests
 from app.schemas.project import (
     ProjectAnalysisRead, ProjectCreate, ProjectEventRead, ProjectRead, ProjectUpdate,
 )
@@ -220,3 +224,66 @@ def reject_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask:
     db.commit()
     db.refresh(task)
     return task
+
+
+@router.get("/projects/{project_id}/memory", response_model=list[MemoryRead], tags=["Memória"])
+def list_project_memory(project_id: int, db: Session = Depends(get_db)):
+    get_existing_project(project_id, db)
+    return list(db.scalars(select(ProjectMemory).where(ProjectMemory.project_id == project_id)
+                           .order_by(ProjectMemory.updated_at.desc())).all())
+
+@router.put("/projects/{project_id}/memory", response_model=MemoryRead, tags=["Memória"])
+def write_project_memory(project_id: int, payload: MemoryWrite, db: Session = Depends(get_db)):
+    get_existing_project(project_id, db)
+    memory = db.scalar(select(ProjectMemory).where(
+        ProjectMemory.project_id == project_id, ProjectMemory.memory_key == payload.memory_key
+    ))
+    if memory is None:
+        memory = ProjectMemory(project_id=project_id, memory_key=payload.memory_key,
+                               content=payload.content, source="user")
+        db.add(memory)
+    else:
+        memory.content = payload.content
+        memory.source = "user"
+    record_event(db, project_id, "project_memory_updated", "Memória técnica atualizada.", {"memory_key": payload.memory_key})
+    db.commit()
+    db.refresh(memory)
+    return memory
+
+@router.post("/projects/{project_id}/rescue", tags=["Modo Resgate"])
+def rescue_registered_project(project_id: int, db: Session = Depends(get_db)):
+    project = get_existing_project(project_id, db)
+    root = get_project_directory(project)
+    report = rescue_project(root)
+    db.add(AgentRun(project_id=project.id, run_type="rescue", status="completed",
+                    summary="Diagnóstico estático do Modo Resgate concluído.",
+                    details_json=json.dumps(report, ensure_ascii=False)))
+    record_event(db, project.id, "rescue_completed", "Diagnóstico do Modo Resgate concluído.",
+                 {"score": report["score"], "total_findings": report["total_findings"]})
+    db.commit()
+    return report
+
+@router.post("/projects/{project_id}/validate", tags=["Validação"])
+def validate_project_in_sandbox(project_id: int, db: Session = Depends(get_db)):
+    project = get_existing_project(project_id, db)
+    root = get_project_directory(project)
+    try:
+        result = run_python_tests(root)
+    except SandboxUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    db.add(AgentRun(project_id=project.id, run_type="pytest", status=result["status"],
+                    summary="Validação automatizada isolada do projeto.",
+                    details_json=json.dumps(result, ensure_ascii=False)))
+    record_event(db, project.id, "sandbox_validation", "Validação em sandbox concluída.",
+                 {"status": result["status"], "exit_code": result["exit_code"]})
+    db.commit()
+    return result
+
+@router.get("/projects/{project_id}/runs", tags=["Execuções"])
+def list_project_runs(project_id: int, db: Session = Depends(get_db)):
+    get_existing_project(project_id, db)
+    runs = db.scalars(select(AgentRun).where(AgentRun.project_id == project_id)
+                      .order_by(AgentRun.created_at.desc()).limit(50)).all()
+    return [{"id": run.id, "run_type": run.run_type, "status": run.status,
+             "summary": run.summary, "details": json.loads(run.details_json) if run.details_json else None,
+             "created_at": run.created_at} for run in runs]
