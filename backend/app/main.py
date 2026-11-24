@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
-from app.api.routes import router
+from app.api.routes import router, auth_router
 from app.core.config import APP_NAME, APP_VERSION, DEFAULT_DATABASE_PATH
 from app.db.base import Base
 from app.db.migrations import upgrade_sqlite_schema
@@ -28,6 +28,7 @@ def create_app(*, initialize_database: bool = True) -> FastAPI:
         description="Agente de desenvolvimento DevPilot AI com importação e análise segura de projetos.",
         lifespan=lifespan,
     )
+    application.include_router(auth_router, prefix="/api/v1")
     application.include_router(router, prefix="/api/v1")
     assets_dir = FRONTEND_DIR / "assets"
     if assets_dir.exists():
