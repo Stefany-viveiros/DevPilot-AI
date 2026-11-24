@@ -204,6 +204,7 @@ function renderAuthPanel() {
       const data = await response.json();
       if (!response.ok) throw new Error(data.detail || "Não foi possível autenticar.");
       authToken = data.access_token;
+      document.querySelector("#logout").hidden = false;
       sessionStorage.setItem("devpilotToken", authToken);
       await loadProjects();
     } catch (error) { message.textContent = error.message; }
@@ -213,6 +214,7 @@ function renderAuthPanel() {
 
 function logout() {
   authToken = "";
+  document.querySelector("#logout").hidden = true;
   sessionStorage.removeItem("devpilotToken");
   renderAuthPanel();
 }
@@ -245,8 +247,8 @@ async function checkApi() {
     apiStatus.textContent = "Online";
     apiDetail.textContent = "API respondendo normalmente";
   } catch {
-    apiStatus.textContent = "Offline";
-    apiDetail.textContent = "Inicie o servidor local";
+    apiStatus.textContent = authToken ? "Offline" : "Login";
+    apiDetail.textContent = authToken ? "Inicie o servidor local" : "Autenticação necessária para consultar a API";
   }
 }
 
@@ -316,5 +318,6 @@ importForm.addEventListener("submit", async (event) => {
 });
 
 document.querySelector("#logout")?.addEventListener("click", logout);
+if (authToken && document.querySelector("#logout")) document.querySelector("#logout").hidden = false;
 checkApi();
 loadProjects();
