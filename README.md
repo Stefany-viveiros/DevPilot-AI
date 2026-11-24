@@ -21,6 +21,7 @@ Agente de desenvolvimento de software para analisar, planejar, modificar e valid
 - Memória técnica persistente, incluindo perfil estrutural e notas manuais.
 - Modo Resgate com diagnóstico estático e recomendações priorizadas.
 - Execução de testes Python via Docker com rede desativada, filesystem do projeto somente leitura e limites de recursos.
+- Fluxo de reparo: após falhas nos testes, a IA analisa a saída e cria uma proposta de correção que exige aprovação antes de alterar arquivos. Depois, os testes podem ser executados novamente.
 - Base de autenticação com hash de senha, tokens assinados, isolamento de projetos por conta e cotas iniciais.
 
 **Limite importante:** a análise atual é estática e estrutural. Ela lista arquivos e identifica indícios por nomes/extensões; não instala dependências, não executa scripts e não garante que todas as tecnologias foram detectadas.
@@ -96,6 +97,7 @@ Limites atuais: ZIP de até 20 MB, até 2.000 itens, 100 MB descompactados e 10 
 - `GET /api/v1/projects/{id}/memory` / `PUT /api/v1/projects/{id}/memory`
 - `POST /api/v1/projects/{id}/rescue`
 - `POST /api/v1/projects/{id}/validate`
+- `POST /api/v1/projects/{id}/repair` — testa e, em caso de falha, prepara uma proposta de correção pendente de aprovação
 - `GET /api/v1/projects/{id}/runs`
 - `POST /api/v1/auth/register` / `POST /api/v1/auth/login` (modo autenticado)
 - `POST /api/v1/projects/{id}/tasks` — gera plano com IA local
