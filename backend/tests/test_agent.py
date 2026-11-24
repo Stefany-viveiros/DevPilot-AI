@@ -93,3 +93,16 @@ def test_apply_does_not_follow_precreated_temporary_symlink(tmp_path):
     apply_plan(tmp_path, plan)
     assert outside.read_text(encoding="utf-8") == "conteudo original"
     assert (tmp_path / "main.py").read_text(encoding="utf-8") == "conteudo seguro"
+
+
+def test_new_agent_files_are_readable_by_sandbox_user(tmp_path):
+    import os
+    import stat
+    plan = AgentPlan.model_validate({
+        "summary": "Criar módulo", "steps": [],
+        "proposed_changes": [{"path": "generated.py", "content": "value = 1\n", "reason": "teste"}],
+        "risks": [],
+    })
+    apply_plan(tmp_path, plan)
+    if os.name != "nt":
+        assert stat.S_IMODE((tmp_path / "generated.py").stat().st_mode) == 0o644
