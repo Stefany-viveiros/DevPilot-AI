@@ -1,4 +1,5 @@
 const API = "/api/v1";
+let authToken = sessionStorage.getItem("devpilotToken") || "";
 const projectList = document.querySelector("#project-list");
 const projectCount = document.querySelector("#project-count");
 const apiStatus = document.querySelector("#api-status");
@@ -16,6 +17,7 @@ function escapeHtml(value = "") {
 
 async function request(path, options = {}) {
   const headers = { ...options.headers };
+  if (authToken) headers.Authorization = `Bearer ${authToken}`;
   if (options.body && !(options.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
@@ -179,6 +181,42 @@ function renderProjects(projects) {
 
 }
 
+
+function renderAuthPanel() {
+  projectList.innerHTML = '<section class="auth-panel"><h2>Acesse seu espaço</h2><p>Entre na sua conta ou crie uma conta gratuita para continuar.</p><form id="auth-form"><label>E-mail<input name="email" type="email" autocomplete="username" required></label><label>Senha<input name="password" type="password" minlength="12" autocomplete="current-password" required></label><p id="auth-message" role="status"></p><button class="primary-button" type="submit">Entrar</button></form><button class="text-button" id="auth-toggle" type="button">Criar uma conta</button></section>';
+  let mode = "login";
+  const form = document.querySelector("#auth-form");
+  const toggle = document.querySelector("#auth-toggle");
+  toggle.addEventListener("click", () => {
+    mode = mode === "login" ? "register" : "login";
+    form.querySelector('button[type="submit"]').textContent = mode === "login" ? "Entrar" : "Criar conta";
+    form.querySelector('input[name="password"]').autocomplete = mode === "login" ? "current-password" : "new-password";
+    toggle.textContent = mode === "login" ? "Criar uma conta" : "Já tenho uma conta";
+  });
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const button = form.querySelector('button[type="submit"]');
+    const message = document.querySelector("#auth-message");
+    const payload = Object.fromEntries(new FormData(form).entries());
+    button.disabled = true; message.textContent = "";
+    try {
+      const response = await fetch(`${API}/auth/${mode}`, {method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(payload)});
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.detail || "Não foi possível autenticar.");
+      authToken = data.access_token;
+      sessionStorage.setItem("devpilotToken", authToken);
+      await loadProjects();
+    } catch (error) { message.textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+}
+
+function logout() {
+  authToken = "";
+  sessionStorage.removeItem("devpilotToken");
+  renderAuthPanel();
+}
+
 function showCardMessage(card, message, isError = false) {
   let panel = card.querySelector(".card-message");
   if (!panel) {
@@ -194,6 +232,7 @@ async function loadProjects() {
   try {
     renderProjects(await request("/projects"));
   } catch (error) {
+    if (error.message.includes("Autenticação necessária") || error.message.includes("Token inválido") || error.message.includes("Conta inativa")) { renderAuthPanel(); return; }
     projectList.innerHTML = '<div class="empty-state"><strong>Não foi possível carregar os projetos.</strong><p>Confira se a API está em execução e tente novamente.</p></div>';
     projectCount.textContent = "—";
     console.error(error);
@@ -276,5 +315,6 @@ importForm.addEventListener("submit", async (event) => {
   }
 });
 
+document.querySelector("#logout")?.addEventListener("click", logout);
 checkApi();
 loadProjects();
