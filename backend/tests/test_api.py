@@ -207,3 +207,32 @@ def test_failed_tests_create_repair_plan_for_approval(client, monkeypatch):
     assert response.json()["validation"]["status"] == "failed"
     assert response.json()["task"]["status"] == "awaiting_approval"
     assert response.json()["task"]["plan"]["proposed_changes"][0]["path"] == "main.py"
+
+
+def test_account_overview_reports_plan_and_usage(client, monkeypatch):
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    monkeypatch.setenv("DEVPILOT_AUTH_SECRET", "m" * 48)
+    registered = client.post("/api/v1/auth/register", json={
+        "email": "uso@example.com", "password": "senha-super-segura-789"
+    })
+    assert registered.status_code == 201
+    headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
+    created = client.post("/api/v1/projects", headers=headers, json={"name": "Projeto 1"})
+    assert created.status_code == 201
+    overview = client.get("/api/v1/auth/me", headers=headers)
+    assert overview.status_code == 200
+    data = overview.json()
+    assert data["email"] == "uso@example.com"
+    assert data["plan"] == "free"
+    assert data["projects_used"] == 1
+    assert data["projects_limit"] == 3
+    assert data["tasks_used_today"] == 0
+    assert data["tasks_limit"] == 10
+
+
+def test_account_overview_requires_authentication(client, monkeypatch):
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    response = client.get("/api/v1/auth/me")
+    assert response.status_code == 401
