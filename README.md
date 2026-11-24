@@ -23,7 +23,7 @@ Agente de desenvolvimento de software para analisar, planejar, modificar e valid
 - Restauração explícita de um checkpoint para desfazer uma aplicação aprovada, incluindo remoção dos arquivos que não existiam antes.
 - Memória técnica persistente, incluindo perfil estrutural e notas manuais.
 - Modo Resgate com diagnóstico estático e recomendações priorizadas.
-- Execução de testes Python via Docker com rede desativada, filesystem do projeto somente leitura e limites de recursos.
+- Validação isolada via Docker: executa testes Python com pytest quando encontrados e verifica sintaxe de arquivos JavaScript (.js, .mjs, .cjs) sem executar esses arquivos.
 - Fluxo de reparo: após falhas nos testes, a IA analisa a saída e cria uma proposta de correção que exige aprovação antes de alterar arquivos. Depois, os testes podem ser executados novamente.
 - Base de autenticação com hash de senha, tokens assinados, isolamento de projetos por conta e cotas iniciais.
 
@@ -71,7 +71,7 @@ Acesse:
 - Saúde da API: http://127.0.0.1:8000/api/v1/health
 - Documentação interativa: http://127.0.0.1:8000/docs
 
-Para validação isolada, construa a imagem de testes na raiz do repositório com: docker build -t devpilot-sandbox:py311 sandbox/. A validação executa pytest dentro do contêiner sem rede, com projeto montado como somente leitura e limites de recursos. A execução tem limite de 120 segundos, tenta encerrar o contêiner ao exceder esse prazo e mantém no máximo 12 KB da saída de testes em memória. A imagem inclui pytest, mas não instala dependências específicas de cada projeto.
+Para validação isolada, construa a imagem de testes na raiz do repositório com: `docker build -t devpilot-sandbox:py311 sandbox/`. A imagem inclui pytest e Node.js. A validação executa pytest quando encontra testes Python e `node --check` em arquivos JavaScript compatíveis, sem executar o código JavaScript. O contêiner não tem rede, monta o projeto como somente leitura e aplica limites de recursos. A execução tem limite de 120 segundos, tenta encerrar o contêiner ao exceder esse prazo e mantém no máximo 12 KB da saída de testes em memória. A imagem inclui pytest, mas não instala dependências específicas de cada projeto.
 
 O agente usa Ollama local em `http://127.0.0.1:11434` e o modelo `qwen2.5-coder:3b` por padrão. Instale o Ollama e execute `ollama pull qwen2.5-coder:3b`. Configure `DEVPILOT_OLLAMA_URL` e `DEVPILOT_OLLAMA_MODEL` para personalizar. Sem Ollama, a função de planejamento retorna indisponibilidade; não há API paga obrigatória.
 
@@ -128,7 +128,7 @@ pytest -q
 - Arquivos com nomes e extensões sensíveis comuns são ignorados, mas isso não substitui uma ferramenta dedicada de detecção de segredos.
 - A análise percorre apenas a pasta de workspace associada ao projeto.
 - O modo local mantém autenticação desativada por padrão. Para habilitar contas, configure DEVPILOT_AUTH_REQUIRED=true e DEVPILOT_AUTH_SECRET com pelo menos 32 caracteres aleatórios. As rotas da API passam a exigir Authorization: Bearer token; os projetos ficam isolados por conta. O plano gratuito tem limites iniciais de 3 projetos e 10 tarefas de IA por janela de 24 horas. O painel autenticado mostra o consumo atual e os limites da conta.
-- A validação em Docker executa somente pytest com rede desativada; não instala dependências do projeto. A segurança depende de Docker e host atualizados. Não exponha o daemon Docker.
+- A validação em Docker executa pytest e verificações de sintaxe JavaScript; não instala dependências do projeto, não executa scripts npm e não compila TypeScript/TSX. A segurança depende de Docker e host atualizados. Não exponha o daemon Docker.
 - O Modo Resgate é estático e sua pontuação é indicativa, não uma avaliação de qualidade comprovada.
 - O login possui bloqueio local após 5 tentativas inválidas por combinação de IP e e-mail durante uma janela de 15 minutos. Esse controle reside na memória do processo: reiniciar a aplicação limpa os contadores e múltiplas instâncias não compartilham estado. Antes de produção, substituir por limitação distribuída (por exemplo, Redis), adicionar proteção no proxy e monitoramento. Ainda faltam verificação de e-mail, recuperação de senha, sessões revogáveis, cobrança, portal de assinatura e revisão independente de segurança. Não exponha a aplicação à internet ainda.
 - Projetos criados anteriormente no modo local sem autenticação ficam sem proprietário (`user_id` nulo) e não aparecem automaticamente em contas autenticadas. Antes de habilitar autenticação em uma base já utilizada, faça backup e planeje a adoção desses projetos por uma conta; não exponha a aplicação à internet.
