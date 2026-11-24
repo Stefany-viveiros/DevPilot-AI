@@ -11,6 +11,10 @@ from app.core.config import MAX_ARCHIVE_BYTES, WORKSPACE_DIR
 from app.db.session import get_db
 from app.models.event import ProjectEvent
 from app.models.project import Project
+from app.models.agent_task import AgentTask
+from app.models.agent_approval import AgentApproval
+from app.schemas.agent import TaskCreate, TaskRead, AgentPlan
+from app.services.agent import AgentProviderError, create_plan, apply_plan
 from app.schemas.project import (
     ProjectAnalysisRead, ProjectCreate, ProjectEventRead, ProjectRead, ProjectUpdate,
 )
@@ -156,3 +160,63 @@ def list_project_events(project_id: int, db: Session = Depends(get_db)) -> list[
         select(ProjectEvent).where(ProjectEvent.project_id == project_id)
         .order_by(ProjectEvent.created_at.desc(), ProjectEvent.id.desc())
     ).all())
+
+
+@router.post("/projects/{project_id}/tasks", response_model=TaskRead, status_code=201, tags=["Agente"])
+def create_agent_task(project_id: int, payload: TaskCreate, db: Session = Depends(get_db)) -> AgentTask:
+    project = get_existing_project(project_id, db)
+    root = get_project_directory(project)
+    try:
+        plan = create_plan(root, payload.instruction.strip())
+    except AgentProviderError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    task = AgentTask(project_id=project.id, instruction=payload.instruction.strip(),
+                     status="awaiting_approval", plan_json=plan.model_dump_json())
+    db.add(task)
+    db.flush()
+    record_event(db, project.id, "agent_plan_created", "Plano criado e aguardando aprovação.", {"task_id": task.id})
+    db.commit()
+    db.refresh(task)
+    return task
+
+@router.get("/projects/{project_id}/tasks", response_model=list[TaskRead], tags=["Agente"])
+def list_agent_tasks(project_id: int, db: Session = Depends(get_db)) -> list[AgentTask]:
+    get_existing_project(project_id, db)
+    return list(db.scalars(select(AgentTask).where(AgentTask.project_id == project_id)
+                           .order_by(AgentTask.created_at.desc())).all())
+
+@router.post("/tasks/{task_id}/approve", response_model=TaskRead, tags=["Agente"])
+def approve_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask:
+    task = db.get(AgentTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+    if task.status != "awaiting_approval":
+        raise HTTPException(status_code=409, detail="Esta tarefa não aguarda aprovação.")
+    project = get_existing_project(task.project_id, db)
+    root = get_project_directory(project)
+    try:
+        plan = AgentPlan.model_validate_json(task.plan_json)
+        written = apply_plan(root, plan)
+    except (ValueError, OSError) as exc:
+        raise HTTPException(status_code=422, detail=f"Alterações não aplicadas: {exc}") from exc
+    task.status = "applied"
+    task.result_json = json.dumps({"files_written": written}, ensure_ascii=False)
+    db.add(AgentApproval(task_id=task.id, decision="approved"))
+    record_event(db, project.id, "agent_changes_applied", "Alterações aprovadas e aplicadas.", {"task_id": task.id, "files_written": written})
+    db.commit()
+    db.refresh(task)
+    return task
+
+@router.post("/tasks/{task_id}/reject", response_model=TaskRead, tags=["Agente"])
+def reject_agent_task(task_id: int, db: Session = Depends(get_db)) -> AgentTask:
+    task = db.get(AgentTask, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+    if task.status != "awaiting_approval":
+        raise HTTPException(status_code=409, detail="Esta tarefa não aguarda decisão.")
+    task.status = "rejected"
+    db.add(AgentApproval(task_id=task.id, decision="rejected"))
+    record_event(db, task.project_id, "agent_plan_rejected", "Plano do agente rejeitado.", {"task_id": task.id})
+    db.commit()
+    db.refresh(task)
+    return task
