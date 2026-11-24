@@ -13,3 +13,11 @@ def test_rescue_does_not_execute_project_files(tmp_path):
     (tmp_path / "main.py").write_text(f"from pathlib import Path\nPath({str(marker)!r}).write_text('bad')\n", encoding="utf-8")
     rescue_project(tmp_path)
     assert not marker.exists()
+
+
+def test_rescue_checks_documentation_beyond_dashboard_file_limit(tmp_path):
+    for index in range(170):
+        (tmp_path / f"module_{index:03}.py").write_text("value = 1\n", encoding="utf-8")
+    (tmp_path / "README.md").write_text("# Projeto\n", encoding="utf-8")
+    report = rescue_project(tmp_path)
+    assert not any(item["title"] == "Documentação ausente" for item in report["findings"])
