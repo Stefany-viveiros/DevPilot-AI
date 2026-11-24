@@ -52,7 +52,7 @@ function renderProjects(projects) {
     <small class="project-meta">${project.root_path ? "Arquivos importados" : "Cadastro manual"} · ${escapeHtml(project.status)}</small></div>
     <div class="project-actions">
       ${project.root_path ? '<button class="small-button analyze-project">Analisar</button>' : ""}
-      <button class="small-button history-project">Histórico</button>${project.root_path ? '<button class="small-button agent-project">Pedir ao agente</button><button class="small-button rescue-project">Modo Resgate</button><button class="small-button validate-project">Validar</button><button class="small-button repair-project">Testar + propor correção</button><button class="small-button memory-project">Memória</button>' : ""}
+      <button class="small-button history-project">Histórico</button>${project.root_path ? '<button class="small-button tasks-project">Tarefas</button>' : ""}${project.root_path ? '<button class="small-button agent-project">Pedir ao agente</button><button class="small-button rescue-project">Modo Resgate</button><button class="small-button validate-project">Validar</button><button class="small-button repair-project">Testar + propor correção</button><button class="small-button memory-project">Memória</button>' : ""}
     </div>
   </article>`).join("");
 
@@ -98,6 +98,72 @@ function renderProjects(projects) {
           card.append(panel);
         }
         panel.innerHTML = `<h4>Eventos do projeto</h4><ul>${history}</ul><h4>Execuções e evidências</h4><ul>${reports}</ul>`;
+      } catch (error) {
+        showCardMessage(card, error.message, true);
+      } finally {
+        button.disabled = false;
+      }
+    });
+  });
+
+  projectList.querySelectorAll(".tasks-project").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const card = button.closest(".project-card");
+      button.disabled = true;
+      try {
+        const tasks = await request(`/projects/${card.dataset.projectId}/tasks`);
+        let panel = card.querySelector(".tasks-panel");
+        if (!panel) {
+          panel = document.createElement("div");
+          panel.className = "tasks-panel";
+          card.append(panel);
+        }
+        const statusLabels = {
+          awaiting_approval: "Aguardando aprovação",
+          applied: "Aplicada",
+          restored: "Restaurada",
+          rejected: "Rejeitada",
+        };
+        panel.innerHTML = `<h4>Tarefas do agente</h4>${tasks.length ? tasks.map((task) => {
+          let plan = {};
+          try { plan = JSON.parse(task.plan_json || "{}"); } catch { plan = {}; }
+          const changes = Array.isArray(plan.proposed_changes) ? plan.proposed_changes : [];
+          const status = statusLabels[task.status] || task.status;
+          const controls = task.status === "applied"
+            ? `<button class="small-button restore-task" data-task-id="${task.id}">Restaurar versão anterior</button>`
+            : task.status === "awaiting_approval"
+              ? `<button class="small-button approve-task" data-task-id="${task.id}">Aprovar e aplicar</button><button class="small-button reject-task" data-task-id="${task.id}">Rejeitar</button>`
+              : "";
+          return `<article class="task-item"><div class="task-heading"><b>#${task.id} · ${escapeHtml(status)}</b><small>${escapeHtml(new Date(task.created_at).toLocaleString("pt-BR"))}</small></div><p>${escapeHtml(task.instruction)}</p><p>${escapeHtml(plan.summary || "Plano indisponível")}</p><small>${changes.length} arquivo(s) no plano</small><div class="task-controls">${controls}</div></article>`;
+        }).join("") : "<p>Nenhuma tarefa criada para este projeto.</p>"}<p class="task-feedback" role="status"></p><p class="agent-warning">Restaurar substitui os arquivos alterados pela cópia de segurança anterior à tarefa. Faça isso somente se tiver certeza.</p>`;
+        const feedback = panel.querySelector(".task-feedback");
+        panel.querySelectorAll(".approve-task").forEach((action) => action.addEventListener("click", async () => {
+          if (!confirm("Aplicar as alterações desta tarefa? O DevPilot criará um checkpoint antes de gravar.")) return;
+          action.disabled = true;
+          try {
+            await request(`/tasks/${action.dataset.taskId}/approve`, {method:"POST"});
+            feedback.textContent = "Alterações aplicadas e checkpoint criado.";
+            button.click();
+          } catch (error) { feedback.textContent = error.message; action.disabled = false; }
+        }));
+        panel.querySelectorAll(".reject-task").forEach((action) => action.addEventListener("click", async () => {
+          if (!confirm("Rejeitar este plano?")) return;
+          action.disabled = true;
+          try {
+            await request(`/tasks/${action.dataset.taskId}/reject`, {method:"POST"});
+            feedback.textContent = "Plano rejeitado.";
+            button.click();
+          } catch (error) { feedback.textContent = error.message; action.disabled = false; }
+        }));
+        panel.querySelectorAll(".restore-task").forEach((action) => action.addEventListener("click", async () => {
+          if (!confirm("Restaurar os arquivos para o estado anterior à aplicação desta tarefa? Esta ação substitui os arquivos atuais.")) return;
+          action.disabled = true;
+          try {
+            await request(`/tasks/${action.dataset.taskId}/restore`, {method:"POST"});
+            feedback.textContent = "Checkpoint restaurado. Confira os arquivos do projeto.";
+            button.click();
+          } catch (error) { feedback.textContent = error.message; action.disabled = false; }
+        }));
       } catch (error) {
         showCardMessage(card, error.message, true);
       } finally {
