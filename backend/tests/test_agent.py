@@ -80,7 +80,7 @@ def test_apply_rejects_duplicate_file_paths(tmp_path):
 def test_apply_does_not_follow_precreated_temporary_symlink(tmp_path):
     outside = tmp_path.parent / "outside-target.txt"
     outside.write_text("conteudo original", encoding="utf-8")
-    temporary_link = tmp_path / ".main.py.devpilot-attack"
+    temporary_link = tmp_path / "main.py.devpilot-tmp"
     try:
         temporary_link.symlink_to(outside)
     except (OSError, NotImplementedError):
