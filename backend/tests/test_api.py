@@ -95,6 +95,7 @@ def test_import_skips_dependency_and_secret_files(client):
     archive = make_zip({
         "src/main.py": "print('ok')",
         ".env": "TOKEN=segredo",
+        ".env.development": "TOKEN=segredo",
         "node_modules/lib/index.js": "codigo",
     })
     response = client.post(

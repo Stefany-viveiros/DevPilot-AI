@@ -1,6 +1,7 @@
 from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
+import shutil
 import stat
 import zipfile
 from io import BytesIO
@@ -17,11 +18,11 @@ IGNORED_DIRECTORIES = {
     "build", ".idea", ".vscode",
 }
 SENSITIVE_NAMES = {
-    ".env", ".env.local", ".env.production", "id_rsa", "id_ed25519",
-    "credentials", "credentials.json", "secrets.json",
+    ".env", "id_rsa", "id_ed25519", "credentials", "credentials.json",
+    "secrets.json",
 }
 SENSITIVE_SUFFIXES = {".pem", ".key", ".p12", ".pfx"}
-SENSITIVE_PARTS = ("secret", "credential", "token")
+SENSITIVE_PARTS = ("secret", "credential", "token", "password", "api_key")
 
 class ArchiveValidationError(ValueError):
     """Arquivo compactado inválido ou que viola os limites de importação."""
@@ -36,7 +37,7 @@ class ImportResult:
 def _is_sensitive(relative_path: PurePosixPath) -> bool:
     for part in relative_path.parts:
         lower = part.lower()
-        if lower in SENSITIVE_NAMES or lower.endswith(SENSITIVE_SUFFIXES):
+        if lower in SENSITIVE_NAMES or lower.startswith(".env.") or lower.endswith(tuple(SENSITIVE_SUFFIXES)):
             return True
         if any(marker in lower for marker in SENSITIVE_PARTS):
             return True
@@ -120,7 +121,9 @@ def extract_project_archive(archive_bytes: bytes, workspace_dir: Path | None = N
             files_skipped=skipped,
             bytes_imported=total_bytes,
         )
+    except zipfile.BadZipFile as exc:
+        shutil.rmtree(destination, ignore_errors=True)
+        raise ArchiveValidationError("O ZIP está danificado ou contém dados inconsistentes.") from exc
     except Exception:
-        import shutil
         shutil.rmtree(destination, ignore_errors=True)
         raise
