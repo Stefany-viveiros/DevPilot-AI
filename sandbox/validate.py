@@ -86,13 +86,11 @@ def discover_sources():
             if size > MAX_SOURCE_FILE_BYTES or total_bytes + size > MAX_SOURCE_TOTAL_BYTES:
                 incomplete = True
                 continue
+            if sum(len(items) for items in found.values()) >= MAX_SOURCE_FILES:
+                incomplete = True
+                return found, incomplete
             found[group].append(path)
             total_bytes += size
-            if sum(len(items) for items in found.values()) > MAX_SOURCE_FILES:
-                incomplete = True
-                for key in found:
-                    found[key] = found[key][:MAX_SOURCE_FILES]
-                return found, incomplete
     return found, incomplete
 
 
