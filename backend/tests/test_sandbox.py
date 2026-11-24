@@ -98,7 +98,7 @@ def test_sandbox_rejects_missing_structured_report(tmp_path):
     import pytest
 
     with patch("app.services.sandbox.shutil.which", return_value="/usr/bin/docker"), patch(
-        "app.services.sandbox.subprocess.Popen", return_value=FakeProcess(b"output sem relatório")
+        "app.services.sandbox.subprocess.Popen", return_value=FakeProcess("output sem relatório".encode("utf-8"))
     ):
         with pytest.raises(SandboxUnavailable, match="relatório válido"):
             run_python_tests(tmp_path)
