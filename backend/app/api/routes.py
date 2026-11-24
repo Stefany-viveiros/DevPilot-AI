@@ -21,7 +21,7 @@ from app.models.agent_run import AgentRun
 from app.models.user import User
 from app.schemas.agent import TaskCreate, TaskRead, AgentPlan, MemoryWrite, MemoryRead
 from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
-from app.services.auth import hash_password, verify_password, issue_token, read_token
+from app.services.auth import hash_password, verify_password, issue_token, read_token, _secret
 from app.services.agent import AgentProviderError, create_plan, apply_plan
 from app.services.rescue import rescue_project
 from app.services.sandbox import SandboxUnavailable, run_python_tests
@@ -34,7 +34,7 @@ from app.services.project_import import ArchiveValidationError, extract_project_
 _current_user_id: ContextVar[int | None] = ContextVar("devpilot_user_id", default=None)
 _bearer = HTTPBearer(auto_error=False)
 
-def enforce_auth(credentials: HTTPAuthorizationCredentials | None = Depends(_bearer), db: Session = Depends(get_db)):
+async def enforce_auth(credentials: HTTPAuthorizationCredentials | None = Depends(_bearer), db: Session = Depends(get_db)):
     if not AUTH_REQUIRED:
         return
     if credentials is None or credentials.scheme.lower() != "bearer":
@@ -59,8 +59,7 @@ router = APIRouter(dependencies=[Depends(enforce_auth)])
 def register_account(payload: RegisterRequest, db: Session = Depends(get_db)):
     if not AUTH_REQUIRED:
         raise HTTPException(status_code=503, detail="Ative DEVPILOT_AUTH_REQUIRED para habilitar contas.")
-    email = payload.email.strip().lower()
-    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
+    try:\n        _secret()\n    except RuntimeError as exc:\n        raise HTTPException(status_code=503, detail=str(exc)) from exc\n    email = payload.email.strip().lower()\n    if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", email):
         raise HTTPException(status_code=422, detail="Informe um e-mail válido.")
     if db.scalar(select(User).where(User.email == email)):
         raise HTTPException(status_code=409, detail="Este e-mail já possui uma conta.")
@@ -78,8 +77,7 @@ def register_account(payload: RegisterRequest, db: Session = Depends(get_db)):
 def login_account(payload: LoginRequest, db: Session = Depends(get_db)):
     if not AUTH_REQUIRED:
         raise HTTPException(status_code=503, detail="Ative DEVPILOT_AUTH_REQUIRED para habilitar contas.")
-    email = payload.email.strip().lower()
-    user = db.scalar(select(User).where(User.email == email))
+    try:\n        _secret()\n    except RuntimeError as exc:\n        raise HTTPException(status_code=503, detail=str(exc)) from exc\n    email = payload.email.strip().lower()\n    user = db.scalar(select(User).where(User.email == email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
     try:
