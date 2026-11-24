@@ -10,7 +10,8 @@ def upgrade_sqlite_schema(engine: Engine) -> None:
     existing = {column["name"] for column in inspector.get_columns("projects")}
     additions = {
         "analysis_data": "TEXT",
-        "last_analyzed_at": "DATETIME",\n        "user_id": "INTEGER REFERENCES users(id)",
+        "last_analyzed_at": "DATETIME",
+        "user_id": "INTEGER REFERENCES users(id)",
     }
     with engine.begin() as connection:
         for column_name, column_type in additions.items():
