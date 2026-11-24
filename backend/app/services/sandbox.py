@@ -20,7 +20,8 @@ def run_python_tests(project_root: Path) -> dict:
         "--cap-drop", "ALL", "--security-opt", "no-new-privileges",
         "--pids-limit", "64", "--memory", "512m", "--cpus", "1",
         "--tmpfs", "/tmp:rw,noexec,nosuid,size=64m",
-        "--mount", f"type=bind,src={project_root.resolve()},dst=/workspace,readonly",\n        "--env", "PYTHONDONTWRITEBYTECODE=1", "--env", "TMPDIR=/tmp",
+        "--mount", f"type=bind,src={project_root.resolve()},dst=/workspace,readonly",
+        "--env", "PYTHONDONTWRITEBYTECODE=1", "--env", "TMPDIR=/tmp",
         "--workdir", "/workspace", SANDBOX_IMAGE, "python", "-m", "pytest", "-p", "no:cacheprovider", "-q",
     ]
     try:
