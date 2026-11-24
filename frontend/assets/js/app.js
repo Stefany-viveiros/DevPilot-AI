@@ -52,7 +52,7 @@ function renderProjects(projects) {
     <small class="project-meta">${project.root_path ? "Arquivos importados" : "Cadastro manual"} · ${escapeHtml(project.status)}</small></div>
     <div class="project-actions">
       ${project.root_path ? '<button class="small-button analyze-project">Analisar</button>' : ""}
-      <button class="small-button history-project">Histórico</button>${project.root_path ? '<button class="small-button agent-project">Pedir ao agente</button><button class="small-button rescue-project">Modo Resgate</button><button class="small-button validate-project">Validar</button><button class="small-button memory-project">Memória</button>' : ""}
+      <button class="small-button history-project">Histórico</button>${project.root_path ? '<button class="small-button agent-project">Pedir ao agente</button><button class="small-button rescue-project">Modo Resgate</button><button class="small-button validate-project">Validar</button><button class="small-button repair-project">Testar + propor correção</button><button class="small-button memory-project">Memória</button>' : ""}
     </div>
   </article>`).join("");
 
@@ -159,6 +159,32 @@ function renderProjects(projects) {
         showCardMessage(card, `Testes: ${result.status} (código ${result.exit_code}). ${result.output || ""}`, result.status !== "passed");
       } catch(error) { showCardMessage(card,error.message,true); }
       finally { button.disabled = false; button.textContent = "Validar"; }
+    });
+  });
+
+  projectList.querySelectorAll(".repair-project").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const card=button.closest(".project-card"); button.disabled=true; button.textContent="Testando…";
+      try {
+        const result=await request(`/projects/${card.dataset.projectId}/repair`,{method:"POST"});
+        showCardMessage(card,`Validação: ${result.validation.status}. ${result.validation.output || ""}`,result.validation.status!=="passed");
+        let panel=card.querySelector(".repair-panel");
+        if (!panel) { panel=document.createElement("div"); panel.className="repair-panel"; card.append(panel); }
+        if (!result.task) { panel.textContent=result.planning_error || "Nenhuma correção necessária."; return; }
+        const plan=result.task.plan;
+        panel.innerHTML=`<h4>Proposta aguardando aprovação</h4><p>${escapeHtml(plan.summary)}</p><ul>${(plan.proposed_changes||[]).map(change=>"<li><b>"+escapeHtml(change.path)+"</b><pre>"+escapeHtml(change.content||"")+"</pre></li>").join("")||"<li>Sem alterações propostas.</li>"}</ul><p class="agent-warning">Os testes falharam. Revise o conteúdo antes de aprovar.</p>${(plan.proposed_changes||[]).length?'<button class="small-button approve-repair">Aprovar correção</button>':'<span>Não há alterações para aplicar.</span>'} <button class="small-button reject-repair">Rejeitar</button><p class="repair-feedback" role="status"></p>`;
+        const approve=panel.querySelector(".approve-repair");
+        if(approve) approve.addEventListener("click",async()=>{
+          if(!confirm("Aplicar a correção proposta? Faça backup antes de continuar.")) return;
+          try { await request(`/tasks/${result.task.id}/approve`,{method:"POST"}); panel.querySelector(".repair-feedback").textContent="Correção aplicada. Execute Validar novamente para conferir o resultado."; }
+          catch(error){panel.querySelector(".repair-feedback").textContent=error.message;}
+        });
+        panel.querySelector(".reject-repair").addEventListener("click",async()=>{
+          try { await request(`/tasks/${result.task.id}/reject`,{method:"POST"}); panel.querySelector(".repair-feedback").textContent="Proposta rejeitada."; }
+          catch(error){panel.querySelector(".repair-feedback").textContent=error.message;}
+        });
+      } catch(error){showCardMessage(card,error.message,true);}
+      finally{button.disabled=false;button.textContent="Testar + propor correção";}
     });
   });
   projectList.querySelectorAll(".memory-project").forEach((button) => {
