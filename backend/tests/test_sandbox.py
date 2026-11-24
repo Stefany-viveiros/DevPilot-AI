@@ -79,3 +79,26 @@ def test_sandbox_rejects_symlinked_project_root(tmp_path):
         with pytest.raises(SandboxUnavailable):
             run_python_tests(link)
         popen.assert_not_called()
+
+
+
+def test_sandbox_reports_not_applicable_when_no_supported_checks_exist(tmp_path):
+    report = b'RESULTADO_JSON={"status":"not_applicable","checks":[{"name":"pytest","status":"skipped"},{"name":"javascript_syntax","status":"skipped"}],"javascript_scan_incomplete":false}'
+    with patch("app.services.sandbox.shutil.which", return_value="/usr/bin/docker"), patch(
+        "app.services.sandbox.subprocess.Popen", return_value=FakeProcess(report)
+    ):
+        result = run_python_tests(tmp_path)
+    assert result["status"] == "not_applicable"
+    assert result["exit_code"] == 0
+    assert len(result["checks"]) == 2
+
+
+def test_sandbox_rejects_missing_structured_report(tmp_path):
+    from app.services.sandbox import SandboxUnavailable
+    import pytest
+
+    with patch("app.services.sandbox.shutil.which", return_value="/usr/bin/docker"), patch(
+        "app.services.sandbox.subprocess.Popen", return_value=FakeProcess(b"output sem relatório")
+    ):
+        with pytest.raises(SandboxUnavailable, match="relatório válido"):
+            run_python_tests(tmp_path)
