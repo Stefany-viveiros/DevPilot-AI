@@ -23,7 +23,7 @@ Agente de desenvolvimento de software para analisar, planejar, modificar e valid
 - Restauração explícita de um checkpoint para desfazer uma aplicação aprovada, incluindo remoção dos arquivos que não existiam antes.
 - Memória técnica persistente, incluindo perfil estrutural e notas manuais.
 - Modo Resgate com diagnóstico estático e recomendações priorizadas.
-- Validação isolada via Docker: executa testes Python com pytest quando encontrados e verifica sintaxe JavaScript (.js, .mjs, .cjs) e sintaxe TypeScript/JSX (.ts, .tsx, .mts, .cts, .jsx), sem executar o código.
+- Validação isolada via Docker: executa testes Python com pytest quando encontrados, analisa sintaxe Python sem executar módulos e verifica sintaxe JavaScript (.js, .mjs, .cjs) e TypeScript/JSX (.ts, .tsx, .mts, .cts, .jsx), sem executar o código.
 - Fluxo de reparo: após falhas nos testes, a IA analisa a saída e cria uma proposta de correção que exige aprovação antes de alterar arquivos. Depois, os testes podem ser executados novamente.
 - Base de autenticação com hash de senha, tokens assinados, isolamento de projetos por conta e cotas iniciais.
 
