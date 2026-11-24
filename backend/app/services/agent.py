@@ -102,6 +102,44 @@ def _atomic_write(target: Path, content: bytes) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def create_checkpoint(root: Path, plan: AgentPlan, destination: Path) -> dict:
+    """Salva cópias dos arquivos existentes que serão alterados, fora da pasta do projeto."""
+    import zipfile
+
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    entries = []
+    total = 0
+    for item in plan.proposed_changes:
+        target = validate_path(root, item["path"])
+        if target.is_symlink():
+            raise ValueError("Não é possível criar checkpoint de link simbólico.")
+        if not target.exists():
+            entries.append({"path": item["path"], "existed": False, "size": 0})
+            continue
+        if not target.is_file():
+            raise ValueError("O destino de uma alteração não é um arquivo regular.")
+        size = target.stat().st_size
+        if size > MAX_BACKUP_FILE_BYTES:
+            raise ValueError("Arquivo existente excede 10 MB; checkpoint cancelado.")
+        total += size
+        if total > 50 * 1024 * 1024:
+            raise ValueError("Checkpoint excederia o limite total de 50 MB.")
+        entries.append({"path": item["path"], "existed": True, "size": size})
+    manifest = {"files": entries, "total_bytes": total}
+    temporary = destination.with_suffix(destination.suffix + ".tmp")
+    try:
+        with zipfile.ZipFile(temporary, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False))
+            for entry in entries:
+                if entry["existed"]:
+                    target = validate_path(root, entry["path"])
+                    archive.write(target, "files/" + entry["path"].replace("\\\\", "/"))
+        os.replace(temporary, destination)
+    finally:
+        temporary.unlink(missing_ok=True)
+    return {"file": destination.name, "files": len(entries), "backed_up_files": sum(x["existed"] for x in entries), "bytes": total}
+
+
 def apply_plan(root: Path, plan: AgentPlan) -> list[str]:
     if not plan.proposed_changes:
         raise ValueError("O plano não contém alterações aplicáveis.")
