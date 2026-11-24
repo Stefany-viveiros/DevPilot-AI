@@ -50,7 +50,7 @@ def validate_path(root: Path, raw: str) -> Path:
     return target
 
 def create_plan(root: Path, instruction: str) -> AgentPlan:
-    base = __import__("os")..getenv("DEVPILOT_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
+    base = __import__("os").getenv("DEVPILOT_OLLAMA_URL", "http://127.0.0.1:11434").rstrip("/")
     model = __import__("os").getenv("DEVPILOT_OLLAMA_MODEL", "qwen2.5-coder:3b")
     prompt = f"""Planeje a solicitação para este projeto. Retorne SOMENTE JSON válido com summary, steps (array de {{"title","description"}}), proposed_changes (array de {{"path","content","reason"}}) e risks (array).
 Cada content deve ser o arquivo completo. Use caminhos relativos, no máximo 20 arquivos e 200KB por conteúdo. Não altere arquivos/pastas sensíveis, .git ou dependências. Se não souber, não proponha alterações e explique o risco.
