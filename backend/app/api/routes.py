@@ -5,7 +5,7 @@ from contextvars import ContextVar
 from datetime import datetime, timezone
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -22,6 +22,9 @@ from app.models.user import User
 from app.schemas.agent import TaskCreate, TaskRead, AgentPlan, MemoryWrite, MemoryRead
 from app.schemas.auth import RegisterRequest, LoginRequest, TokenResponse
 from app.services.auth import hash_password, verify_password, issue_token, read_token, _secret
+from app.services.auth_rate_limit import (
+    clear_login_failures, is_login_blocked, login_bucket_key, record_failed_login,
+)
 from app.services.agent import AgentProviderError, create_plan, apply_plan
 from app.services.rescue import rescue_project
 from app.services.sandbox import SandboxUnavailable, run_python_tests
@@ -80,7 +83,7 @@ def register_account(payload: RegisterRequest, db: Session = Depends(get_db)):
     return {"access_token": token, "plan": user.plan}
 
 @auth_router.post("/login", response_model=TokenResponse)
-def login_account(payload: LoginRequest, db: Session = Depends(get_db)):
+def login_account(payload: LoginRequest, request: Request, db: Session = Depends(get_db)):
     if not AUTH_REQUIRED:
         raise HTTPException(status_code=503, detail="Ative DEVPILOT_AUTH_REQUIRED para habilitar contas.")
     try:
@@ -88,9 +91,15 @@ def login_account(payload: LoginRequest, db: Session = Depends(get_db)):
     except RuntimeError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     email = payload.email.strip().lower()
+    remote_address = request.client.host if request.client else "desconhecido"
+    bucket = login_bucket_key(remote_address, email)
+    if is_login_blocked(bucket):
+        raise HTTPException(status_code=429, detail="Muitas tentativas de login. Aguarde 15 minutos.")
     user = db.scalar(select(User).where(User.email == email))
     if user is None or not user.is_active or not verify_password(payload.password, user.password_hash):
+        record_failed_login(bucket)
         raise HTTPException(status_code=401, detail="E-mail ou senha incorretos.")
+    clear_login_failures(bucket)
     try:
         token = issue_token(user.id, user.email)
     except RuntimeError as exc:
