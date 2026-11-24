@@ -50,7 +50,7 @@ function renderProjects(projects) {
     <small class="project-meta">${project.root_path ? "Arquivos importados" : "Cadastro manual"} · ${escapeHtml(project.status)}</small></div>
     <div class="project-actions">
       ${project.root_path ? '<button class="small-button analyze-project">Analisar</button>' : ""}
-      <button class="small-button history-project">Histórico</button><button class="small-button agent-project">Pedir ao agente</button>
+      <button class="small-button history-project">Histórico</button>${project.root_path ? '<button class="small-button agent-project">Pedir ao agente</button>' : ""}
     </div>
   </article>`).join("");
 
