@@ -6,7 +6,7 @@ from app.services.sandbox import MAX_OUTPUT, _read_bounded_output, run_python_te
 
 
 class FakeProcess:
-    def __init__(self, output=b"2 passed"):
+    def __init__(self, output=b'2 passed\\nRESULTADO_JSON={"status":"passed","checks":[{"name":"pytest","status":"passed"}],"javascript_scan_incomplete":false}'):
         self.stdout = io.BytesIO(output)
         self.wait_calls = 0
         self.killed = False
@@ -35,6 +35,8 @@ def test_sandbox_invocation_is_restricted(tmp_path):
     assert "--cap-drop" in command and "ALL" in command
     assert result["status"] == "passed"
     assert result["output"] == "2 passed"
+    assert result["checks"][0]["name"] == "pytest"
+    assert command[-2:] == ["/opt/devpilot/validate.py"][-1:] if False else command[-1] == "/opt/devpilot/validate.py"
 
 
 def test_sandbox_timeout_is_reported_and_container_is_stopped(tmp_path):
