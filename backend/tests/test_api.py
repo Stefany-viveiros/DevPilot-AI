@@ -511,3 +511,37 @@ def test_restore_checkpoint_respects_project_account_ownership(client, monkeypat
     restored = client.post(f"/api/v1/tasks/{task_id}/restore", headers=headers_a)
     assert restored.status_code == 200
     assert target.read_text(encoding="utf-8") == "value = 1\n"
+
+
+
+def test_agent_task_diff_previews_existing_and_new_files(client, monkeypatch):
+    import app.api.routes as routes
+    from app.schemas.agent import AgentPlan
+
+    archive = make_zip({"src/main.py": "value = 1\n"})
+    imported = client.post("/api/v1/projects/import", data={"name": "Prévia de alterações"},
+                           files={"archive": ("previa.zip", archive, "application/zip")})
+    project_id = imported.json()["id"]
+    monkeypatch.setattr(routes, "create_plan", lambda *args: AgentPlan(
+        summary="Atualizar módulo", steps=[], proposed_changes=[
+            {"path": "src/main.py", "content": "value = 2\n", "reason": "Atualiza valor"},
+            {"path": "src/novo.py", "content": "ready = True\n", "reason": "Novo módulo"},
+        ], risks=[]
+    ))
+    planned = client.post(f"/api/v1/projects/{project_id}/tasks",
+                          json={"instruction": "Atualize o módulo e crie outro"})
+    task_id = planned.json()["id"]
+
+    preview = client.get(f"/api/v1/tasks/{task_id}/diff")
+    assert preview.status_code == 200, preview.text
+    files = {item["path"]: item for item in preview.json()["files"]}
+    assert files["src/main.py"]["is_new"] is False
+    assert "-value = 1" in files["src/main.py"]["diff"]
+    assert "+value = 2" in files["src/main.py"]["diff"]
+    assert files["src/novo.py"]["is_new"] is True
+    assert "+ready = True" in files["src/novo.py"]["diff"]
+
+    applied = client.post(f"/api/v1/tasks/{task_id}/approve")
+    assert applied.status_code == 200
+    unavailable = client.get(f"/api/v1/tasks/{task_id}/diff")
+    assert unavailable.status_code == 409
