@@ -30,4 +30,4 @@ def test_real_docker_sandbox_runs_tests_with_read_only_project(tmp_path):
     )
     result = run_python_tests(tmp_path)
     assert result["status"] == "passed", result["output"]
-    assert "read-only" in result["sandbox"]
+    assert "somente leitura" in result["sandbox"]
