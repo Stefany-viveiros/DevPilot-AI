@@ -155,3 +155,25 @@ def test_authentication_isolates_project_accounts(client, monkeypatch):
     assert hidden.status_code == 404
     own = client.get(f"/api/v1/projects/{project_id}", headers={"Authorization":f"Bearer {token_a}"})
     assert own.status_code == 200
+
+
+def test_authentication_requires_token_when_enabled(client, monkeypatch):
+    import app.api.routes as routes
+    monkeypatch.setattr(routes, "AUTH_REQUIRED", True)
+    monkeypatch.setenv("DEVPILOT_AUTH_SECRET", "z" * 48)
+    response = client.get("/api/v1/projects")
+    assert response.status_code == 401
+
+def test_sandbox_validation_is_logged(client, monkeypatch):
+    import app.api.routes as routes
+    archive = make_zip({"test_example.py":"def test_ok(): assert 1 + 1 == 2"})
+    imported = client.post("/api/v1/projects/import", data={"name":"Validação"},
+                           files={"archive":("tests.zip",archive,"application/zip")})
+    project_id = imported.json()["id"]
+    monkeypatch.setattr(routes, "run_python_tests", lambda root: {
+        "status":"passed", "exit_code":0, "output":"1 passed", "sandbox":"Docker isolado"
+    })
+    result = client.post(f"/api/v1/projects/{project_id}/validate")
+    assert result.status_code == 200
+    runs = client.get(f"/api/v1/projects/{project_id}/runs").json()
+    assert any(run["run_type"] == "pytest" and run["status"] == "passed" for run in runs)
