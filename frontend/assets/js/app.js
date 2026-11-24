@@ -245,11 +245,15 @@ function renderAuthPanel() {
 }
 
 async function loadAccount() {
-  const account = await request("/auth/me");
   const usage = document.querySelector("#account-usage");
   if (!usage) return;
-  usage.textContent = `${account.email} · Projetos ${account.projects_used}/${account.projects_limit} · IA hoje ${account.tasks_used_today}/${account.tasks_limit}`;
-  usage.hidden = false;
+  try {
+    const account = await request("/auth/me");
+    usage.textContent = `${account.email} · Projetos ${account.projects_used}/${account.projects_limit} · IA hoje ${account.tasks_used_today}/${account.tasks_limit}`;
+    usage.hidden = false;
+  } catch {
+    usage.hidden = true;
+  }
 }
 
 function logout() {
