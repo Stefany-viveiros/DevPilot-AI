@@ -89,3 +89,19 @@ def test_restore_rejects_corrupt_checkpoint_without_changing_project(tmp_path):
         restore_checkpoint(project, destination)
 
     assert target.read_text(encoding="utf-8") == "não alterar"
+
+
+def test_restore_rejects_path_traversal_in_checkpoint_manifest(tmp_path):
+    project = tmp_path / "projeto"
+    project.mkdir()
+    outside = tmp_path / "fora.txt"
+    outside.write_text("conteúdo protegido", encoding="utf-8")
+    destination = tmp_path / "malicioso.zip"
+    manifest = {"files": [{"path": "../fora.txt", "existed": False}]}
+    with zipfile.ZipFile(destination, "w") as archive:
+        archive.writestr("manifest.json", json.dumps(manifest))
+
+    with pytest.raises(ValueError):
+        restore_checkpoint(project, destination)
+
+    assert outside.read_text(encoding="utf-8") == "conteúdo protegido"
