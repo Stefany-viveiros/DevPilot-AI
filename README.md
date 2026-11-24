@@ -34,7 +34,9 @@ Agente de desenvolvimento de software para analisar, planejar, modificar e valid
 
 ## Executar localmente
 
-Na raiz do repositório:
+**Atalho para Windows com Git Bash:** na raiz do repositório, execute `bash scripts/iniciar.sh`. O script cria o ambiente virtual, instala as dependências, tenta construir a imagem Docker quando o serviço está disponível e inicia o painel. Ollama e Docker são opcionais para abrir o painel, mas necessários para planejamento por IA e validação isolada, respectivamente.
+
+Para executar manualmente, na raiz do repositório:
 
 ```bash
 python -m venv .venv
