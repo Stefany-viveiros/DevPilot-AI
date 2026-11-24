@@ -413,3 +413,44 @@ def list_project_runs(project_id: int, db: Session = Depends(get_db)):
     return [{"id": run.id, "run_type": run.run_type, "status": run.status,
              "summary": run.summary, "details": json.loads(run.details_json) if run.details_json else None,
              "created_at": run.created_at} for run in runs]
+
+
+@router.post("/projects/{project_id}/repair", tags=["Validação", "Agente"])
+def validate_and_propose_repair(project_id: int, db: Session = Depends(get_db)):
+    project = get_existing_project(project_id, db)
+    root = get_project_directory(project)
+    try:
+        validation = run_python_tests(root)
+    except SandboxUnavailable as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    db.add(AgentRun(project_id=project.id, run_type="pytest", status=validation["status"],
+                    summary="Validação anterior à proposta de correção.",
+                    details_json=json.dumps(validation, ensure_ascii=False)))
+    if validation["status"] == "passed":
+        record_event(db, project.id, "repair_validation_passed", "Testes passaram; nenhuma correção foi proposta.")
+        db.commit()
+        return {"validation": validation, "task": None, "planning_error": None}
+    memories = db.scalars(select(ProjectMemory).where(ProjectMemory.project_id == project.id)).all()
+    memory_context = "\n".join(f"{item.memory_key}: {item.content}" for item in memories)
+    instruction = (
+        "Os testes automatizados falharam. Analise a saída abaixo, identifique a causa provável "
+        "e proponha uma correção mínima e segura nos arquivos do projeto. Não remova testes nem "
+        "reduza sua cobertura. Se não houver evidência suficiente, não proponha alterações.\n\n"
+        + validation["output"][:10000]
+    )
+    try:
+        plan = create_plan(root, instruction, memory_context)
+    except AgentProviderError as exc:
+        record_event(db, project.id, "repair_planning_unavailable", "Testes falharam, mas não foi possível gerar uma proposta.", {"reason": str(exc)})
+        db.commit()
+        return {"validation": validation, "task": None, "planning_error": str(exc)}
+    task = AgentTask(project_id=project.id, instruction=instruction,
+                     status="awaiting_approval", plan_json=plan.model_dump_json())
+    db.add(task)
+    db.flush()
+    db.add(AgentRun(project_id=project.id, task_id=task.id, run_type="repair", status="awaiting_approval",
+                    summary="Proposta de correção aguardando aprovação humana.",
+                    details_json=json.dumps({"validation_status": validation["status"]}, ensure_ascii=False)))
+    record_event(db, project.id, "repair_plan_created", "Proposta de correção criada e aguarda aprovação.", {"task_id": task.id})
+    db.commit()
+    return {"validation": validation, "task": {"id": task.id, "status": task.status, "plan": plan.model_dump()}, "planning_error": None}
