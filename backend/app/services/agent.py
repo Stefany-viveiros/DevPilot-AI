@@ -35,7 +35,7 @@ def _context(root: Path) -> str:
 def validate_path(root: Path, raw: str) -> Path:
     normalized = raw.replace("\\", "/")
     rel = PurePosixPath(normalized)
-    if not normalized or rel.is_absolute() or any(p in {"", ".", ".."} for p in rel.parts):
+    if not normalized or ":" in normalized or "\x00" in normalized or rel.is_absolute() or any(p in {"", ".", ".."} for p in rel.parts):
         raise ValueError("Caminho relativo inválido.")
     if any(p.lower() in BLOCKED for p in rel.parts) or any(s in rel.name.lower() for s in SENSITIVE):
         raise ValueError("Caminho protegido ou potencialmente sensível.")
@@ -71,7 +71,10 @@ CONTEXTO:{_context(root)}"""
     for change in plan.proposed_changes:
         if not {"path", "content"}.issubset(change) or len(change["content"].encode()) > 200000:
             raise AgentProviderError("Uma alteração não atende ao formato ou limite de tamanho.")
-        validate_path(root, change["path"])
+        try:
+            validate_path(root, change["path"])
+        except ValueError as exc:
+            raise AgentProviderError(f"O modelo propôs um caminho bloqueado: {exc}") from exc
     return plan
 
 def apply_plan(root: Path, plan: AgentPlan) -> list[str]:
